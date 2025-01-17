@@ -1,5 +1,5 @@
 pub struct Command {
-    com_code: CommandCode,
+    com_code: MySqlCommand,
     arg: str
 }
 
