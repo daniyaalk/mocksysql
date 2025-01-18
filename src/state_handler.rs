@@ -1,22 +1,24 @@
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::{arch::x86_64::_CMP_NEQ_US, sync::{Arc, Mutex, MutexGuard}};
+use util::packet_printer;
 
-use crate::{connection::{Connection, Direction, State}, mysql::packet::{self, Packet, PacketHeader}};
+use crate::{connection::{self, Connection, Direction, State}, mysql::packet::{self, Packet, PacketHeader}, util};
 
 
 pub fn process_frame(buf: &[u8], connection: &Arc<Mutex<Connection>>, direction: &Direction) {
     
     let mut connection = connection.try_lock().expect("Error when trying to acquire lock");
 
-    let packets = make_packets(buf, &mut connection);
+    let packets = make_packets(buf, &connection.partial_data);
 
     for packet in &packets {
         println!("{:?} {:?}", direction, packet);
-        println!("{:X?}", packet.body);
-        println!("{}", String::from_utf8_lossy(&packet.body));
+        println!("{:X?}", buf);
+        packet_printer::print_packet(&packet);
+
         match &connection.get_state() {
             State::Initiated => {
                 if packet.is_ok().is_some() {
-                    connection.state = State::AuthDone;
+                    connection.mark_auth_done();
                     println!("Auth Done!")
                 }
             }
@@ -28,37 +30,43 @@ pub fn process_frame(buf: &[u8], connection: &Arc<Mutex<Connection>>, direction:
 }
 
 
-fn make_packets(buf: &[u8], connection: &mut MutexGuard<'_, Connection>) -> Vec<Packet> {
+fn make_packets(buf: &[u8], partial_data: &Option<Vec<u8>>) -> Vec<Packet> {
 
     let mut ret: Vec<Packet> = Vec::new();
-    
-    match &connection.partial_data {
-        None => {
 
-            let mut offset = 0;
+    let mut offset: usize = 0;
 
-            loop {
+    loop {
 
-                match parse_buffer(&buf, offset) {
+        let buffer_vec:Vec<u8> = partial_data
+                                    .clone()
+                                    .unwrap_or(Vec::new())
+                                    .into_iter()
+                                    .chain(buf.to_vec())
+                                    .collect();
 
-                    Some(packet) => {
-                        offset += 4 + packet.header.size;
-                        ret.push(packet);
-                    },
-                    None => break
+        match parse_buffer(buffer_vec, &mut offset) {
 
-                }
+            Some(packet) => {
+                ret.push(packet);
+            },
+            
+            None => {
+                // if offset > buf.len() {
+                //     break;
+                // }
+                break;
             }
-        },
-        Some(data) => ()
+
+        }
     }
 
     ret
 }
 
-fn parse_buffer(buf: &[u8], offset: usize) -> Option<Packet> {
+fn parse_buffer(buf: Vec<u8>, start_offset: &mut usize) -> Option<Packet> {
 
-    // let offset = offset.clone();
+    let offset = start_offset.clone();
 
     if offset + 4 <=  buf.len() {
 
@@ -73,10 +81,11 @@ fn parse_buffer(buf: &[u8], offset: usize) -> Option<Packet> {
         let mut body: Vec<u8> = Vec::new();
         body.extend_from_slice(&buf[offset+4 .. offset + 4 + header.size]);
 
-
+        *start_offset += 4 + header.size;
         return Some(Packet{
             header, body
         });
     }
+
     None
 }

@@ -22,6 +22,16 @@ impl Connection {
     pub fn mark_auth_done(&mut self) {
         self.state = State::AuthDone
     }
+
+    pub fn unset_partial_data(&mut self) {
+        self.partial_data = None;
+    }
+
+    pub fn set_partial_data(&mut self, bytes: &[u8]) {
+        let mut temp: Vec<u8> = Vec::new();
+        temp.extend_from_slice(bytes);
+        self.partial_data = Some(temp);
+    }
 }
 
 

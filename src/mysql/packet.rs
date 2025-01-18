@@ -9,7 +9,7 @@ pub struct Packet {
 #[derive(Debug)]
 pub struct PacketHeader {
     pub size: usize,
-    pub seq: u8
+    pub seq: u8,
 }
 
 impl PacketHeader {

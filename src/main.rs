@@ -3,6 +3,7 @@ mod connection_handler;
 mod connection;
 mod state_handler;
 mod mysql;
+mod util;
 // crate::connection;
 
 
