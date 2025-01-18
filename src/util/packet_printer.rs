@@ -14,22 +14,32 @@ pub fn print_packet(packet: &Packet) {
     bytes.extend_from_slice(&packet.body);
 
     let mut offset = 0;
+    let mut text_buf: String = String::new();
 
     while offset < bytes.len() {
-        print!(" {:02x} ", bytes.get(offset).unwrap());
+
+        let byte = bytes.get(offset).unwrap();
+        print!(" {:02x} ", byte);
+
+        match byte.is_ascii_graphic() {
+            true => text_buf.push(*byte as char),
+            false => text_buf.push('.')
+        }
+        
+
         offset += 1;
 
         if offset % 16 == 0 || offset == bytes.len() {
 
             if offset == bytes.len() {
-                for _ in 0 .. 16-(bytes.len()%16 ) {
+                while offset % 16 != 0 {
                     print!("    ");
-                }       
+                    offset += 1;
+                }
             }
-
-            if offset >= 16 && offset-1 < bytes.len() {
-                print!(" | {} \n", get_text(&bytes[offset-16 .. offset-1]));                
-            }
+            
+            print!(" | {} \n", text_buf);   
+            text_buf = "".to_owned();            
         }
 
     }

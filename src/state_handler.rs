@@ -12,7 +12,7 @@ pub fn process_frame(buf: &[u8], connection: &Arc<Mutex<Connection>>, direction:
 
     for packet in &packets {
         println!("{:?} {:?}", direction, packet);
-        println!("{:X?}", buf);
+        // println!("{:X?}", buf);
         packet_printer::print_packet(&packet);
 
         match &connection.get_state() {

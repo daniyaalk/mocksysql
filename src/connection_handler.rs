@@ -1,6 +1,6 @@
 use std::{io::{Error, Read, Write}, net::{SocketAddr, TcpStream}, sync::{Arc, Mutex}, thread, time::Duration};
 
-use crate::{connection::{Connection, Direction}, state_handler::process_frame};
+use crate::{connection::{Connection, Direction}, state_handler};
 
 
 fn exchange(mut from: TcpStream, mut to: TcpStream, direction: Direction, client_addess: SocketAddr, connection: Arc<Mutex<Connection>>) -> Result<(), Error> {
@@ -10,21 +10,21 @@ fn exchange(mut from: TcpStream, mut to: TcpStream, direction: Direction, client
 
     loop {
         
-
-        let read_bytes = from.read(&mut buf)?;
+        let read_bytes = from.read(&mut buf).expect("its joever");
 
         if read_bytes == 0 {
-            continue;
+            break;
         }
         // println!("From {:?}: {:?}", from.peer_addr(), &buf);
         // println!("{}", String::from_utf8_lossy(&buf));
 
-        process_frame(&buf, &connection, &direction);
+        state_handler::process_frame(&buf, &connection, &direction);
 
         to.write_all(&buf[..read_bytes])?;
 
     }
 
+    Ok(())
 }
 
 pub fn initiate(client: TcpStream) {
