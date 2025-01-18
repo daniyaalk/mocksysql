@@ -1,7 +1,7 @@
-use std::{arch::x86_64::_CMP_NEQ_US, sync::{Arc, Mutex, MutexGuard}};
+use std::sync::{Arc, Mutex};
 use util::packet_printer;
 
-use crate::{connection::{self, Connection, Direction, State}, mysql::packet::{self, Packet, PacketHeader}, util};
+use crate::{connection::{Connection, Direction, State}, mysql::packet::Packet, util};
 
 
 pub fn process_frame(buf: &[u8], connection: &Arc<Mutex<Connection>>, direction: &Direction) {
@@ -70,21 +70,21 @@ fn parse_buffer(buf: Vec<u8>, start_offset: &mut usize) -> Option<Packet> {
 
     if offset + 4 <=  buf.len() {
 
-        let mut header_bytes: [u8; 4] = [0; 4];
-        header_bytes.copy_from_slice(&buf[offset .. offset+4]);
-        let header: PacketHeader = PacketHeader::from_bytes(&header_bytes);
+        let packet =  Packet::from_bytes(&buf[offset..]);
+
+        if packet.is_err() {
+            return None;
+        }
+
+        let header = &packet.as_ref().unwrap().header;
 
         if header.size == 0 || offset + header.size > buf.len() {
             return None;
         }
 
-        let mut body: Vec<u8> = Vec::new();
-        body.extend_from_slice(&buf[offset+4 .. offset + 4 + header.size]);
-
         *start_offset += 4 + header.size;
-        return Some(Packet{
-            header, body
-        });
+
+        return Some(packet.unwrap());
     }
 
     None

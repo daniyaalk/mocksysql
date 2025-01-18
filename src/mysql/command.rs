@@ -1,8 +1,11 @@
+#[allow(dead_code)]
 pub struct Command {
     com_code: MySqlCommand,
     arg: str
 }
 
+
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MySqlCommand {
     ComSleep = 0x00,
@@ -39,6 +42,7 @@ pub enum MySqlCommand {
     ComResetConnection = 0x1F,
 }
 
+#[allow(dead_code)]
 impl MySqlCommand {
     /// Try to convert a u8 value to a MySqlCommand
     pub fn from_byte(byte: u8) -> Option<Self> {

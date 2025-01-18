@@ -1,5 +1,6 @@
-use crate::mysql::command::{Command};
+use crate::mysql::command::Command;
 
+#[allow(dead_code)]
 pub struct Connection {  
     pub state: State,
     pub partial_data: Option<Vec<u8>>,
@@ -22,7 +23,10 @@ impl Connection {
     pub fn mark_auth_done(&mut self) {
         self.state = State::AuthDone
     }
+}
 
+#[allow(dead_code)]
+impl Connection {
     pub fn unset_partial_data(&mut self) {
         self.partial_data = None;
     }
@@ -39,6 +43,7 @@ impl Connection {
 pub enum State {
     Initiated,
     AuthDone,
+    #[allow(dead_code)]
     PendingResponse
 }
 

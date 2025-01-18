@@ -1,4 +1,4 @@
-use std::usize;
+use std::{fmt::Error, usize};
 
 #[derive(Debug)]
 pub struct Packet {
@@ -38,15 +38,25 @@ impl PacketHeader {
 
 impl Packet {
 
-    pub fn from_bytes(bytes: &[u8]) -> Packet {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Packet, Error> {
+
+        if bytes.len() < 4 {
+            return Err(Error{});
+        }
 
         let header: [u8; 4] = bytes[0 .. 4].try_into().expect("Slice with incorrect length");
-        let body = bytes[4 .. ].to_vec();
+        let header =PacketHeader::from_bytes(&header);
+        
+        if bytes.len() < 4 + header.size {
+            return Err(Error{});
+        }
+        let body = bytes[4 .. 4 + header.size].to_vec();
 
-        Packet { header: PacketHeader::from_bytes(&header), body: body }
+        Ok(Packet { header, body })
 
     }
 
+#[allow(dead_code)]
     pub fn to_bytes(self) -> Vec<u8> {
         let mut ret: Vec<u8> = Vec::new();
 
@@ -78,7 +88,7 @@ impl Packet {
 }
 
 
-
+#[allow(dead_code)]
 pub struct OkData {
     rows_len: usize,
     id: u64,

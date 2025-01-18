@@ -46,18 +46,3 @@ pub fn print_packet(packet: &Packet) {
     print!("\n");
 
 }
-
-fn get_text(bytes: &[u8]) -> String {  
-    
-    let mut ret: String = String::new();
-
-    for byte in bytes {
-        match byte.is_ascii_graphic() {
-            true => ret.push(*byte as char),
-            false => ret.push('.'),
-        }
-    }
-
-    ret
-
-}

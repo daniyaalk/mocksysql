@@ -1,9 +1,9 @@
-use std::{io::{Error, Read, Write}, net::{SocketAddr, TcpStream}, sync::{Arc, Mutex}, thread, time::Duration};
+use std::{io::{Error, Read, Write}, net::{SocketAddr, TcpStream}, sync::{Arc, Mutex}, thread};
 
 use crate::{connection::{Connection, Direction}, state_handler};
 
 
-fn exchange(mut from: TcpStream, mut to: TcpStream, direction: Direction, client_addess: SocketAddr, connection: Arc<Mutex<Connection>>) -> Result<(), Error> {
+fn exchange(mut from: TcpStream, mut to: TcpStream, direction: Direction, _client_addess: SocketAddr, connection: Arc<Mutex<Connection>>) -> Result<(), Error> {
 
     let mut buf: [u8; 4096] = [0; 4096];
 
