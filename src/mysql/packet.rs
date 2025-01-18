@@ -44,8 +44,8 @@ impl Packet {
             return Err(Error{});
         }
 
-        let header: [u8; 4] = bytes[0 .. 4].try_into().expect("Slice with incorrect length");
-        let header =PacketHeader::from_bytes(&header);
+        let raw_header: [u8; 4] = bytes[0 .. 4].try_into().expect("Slice with incorrect length");
+        let header =PacketHeader::from_bytes(&raw_header);
         
         if bytes.len() < 4 + header.size {
             return Err(Error{});

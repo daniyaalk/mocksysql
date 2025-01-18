@@ -5,11 +5,12 @@ use crate::{connection::{Connection, Direction}, state_handler};
 
 fn exchange(mut from: TcpStream, mut to: TcpStream, direction: Direction, _client_addess: SocketAddr, connection: Arc<Mutex<Connection>>) -> Result<(), Error> {
 
-    let mut buf: [u8; 4096] = [0; 4096];
 
 
     loop {
         
+        let mut buf: [u8; 4096] = [0; 4096];
+
         let read_bytes = from.read(&mut buf).expect("its joever");
 
         if read_bytes == 0 {

@@ -33,7 +33,7 @@ impl Connection {
 
     pub fn set_partial_data(&mut self, bytes: &[u8]) {
         let mut temp: Vec<u8> = Vec::new();
-        temp.extend_from_slice(bytes);
+        temp.extend(bytes);
         self.partial_data = Some(temp);
     }
 }
