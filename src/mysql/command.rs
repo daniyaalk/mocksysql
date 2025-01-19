@@ -1,9 +1,8 @@
 #[allow(dead_code)]
 pub struct Command {
     com_code: MySqlCommand,
-    arg: str
+    arg: str,
 }
-
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

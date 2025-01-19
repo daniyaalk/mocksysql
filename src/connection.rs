@@ -1,18 +1,18 @@
 use crate::mysql::command::Command;
 
 #[allow(dead_code)]
-pub struct Connection {  
+pub struct Connection {
     pub state: State,
     pub partial_data: Option<Vec<u8>>,
-    pub last_command: Option<Box<Command>>
+    pub last_command: Option<Box<Command>>,
 }
 
 impl Connection {
     pub fn new() -> Connection {
-        Connection{
+        Connection {
             state: State::Initiated,
             partial_data: None,
-            last_command: None
+            last_command: None,
         }
     }
 
@@ -31,23 +31,22 @@ impl Connection {
         self.partial_data = None;
     }
 
-    pub fn set_partial_data(&mut self, bytes: &[u8]) {
+    pub fn set_partial_data(&mut self, bytes: Vec<u8>) {
         let mut temp: Vec<u8> = Vec::new();
         temp.extend(bytes);
         self.partial_data = Some(temp);
     }
 }
 
-
-
 pub enum State {
     Initiated,
     AuthDone,
     #[allow(dead_code)]
-    PendingResponse
+    PendingResponse,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Direction {
-    C2S, S2C
+    C2S,
+    S2C,
 }
