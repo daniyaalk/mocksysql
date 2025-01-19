@@ -1,25 +1,27 @@
 use crate::mysql::packet::Packet;
 
 pub fn print_packet(packet: &Packet) {
+
+    let mut print_buffer = String::new();
     // Print bounds
-    println!("----------------------------------------------------------------------------------");
-    println!("  0   1   2   3   4   5   6   7   8   9   a   b   c   d   e   f");
-    println!("----------------------------------------------------------------------------------");
+    print_buffer.push_str("----------------------------------------------------------------------------------\n");
+    print_buffer.push_str("  0   1   2   3   4   5   6   7   8   9   a   b   c   d   e   f\n");
+    print_buffer.push_str("----------------------------------------------------------------------------------\n");
 
     let mut bytes: Vec<u8> = Vec::new();
     bytes.extend_from_slice(&packet.header.to_bytes());
     bytes.extend_from_slice(&packet.body);
 
     let mut offset = 0;
-    let mut text_buf: String = String::new();
+    let mut row_buffer: String = String::new();
 
     while offset < bytes.len() {
         let byte = bytes.get(offset).unwrap();
-        print!(" {:02x} ", byte);
+        print_buffer.push_str(format!(" {:02x} ", byte).as_str());
 
         match byte.is_ascii_graphic() {
-            true => text_buf.push(*byte as char),
-            false => text_buf.push('.'),
+            true => row_buffer.push(*byte as char),
+            false => row_buffer.push('.'),
         }
 
         offset += 1;
@@ -27,14 +29,15 @@ pub fn print_packet(packet: &Packet) {
         if offset % 16 == 0 || offset == bytes.len() {
             if offset == bytes.len() {
                 while offset % 16 != 0 {
-                    print!("    ");
+                    print_buffer.push_str("    ");
                     offset += 1;
                 }
             }
 
-            print!(" | {} \n", text_buf);
-            text_buf = "".to_owned();
+            print_buffer.push_str(format!(" | {} \n", row_buffer).as_str());
+            row_buffer = "".to_string();
         }
     }
-    print!("\n");
+    print_buffer.push_str("\n");
+    print!("{}", print_buffer);
 }

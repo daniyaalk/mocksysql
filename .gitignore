@@ -1,1 +1,6 @@
 /target
+/.idea/.gitignore
+/logs.txt
+/.idea/vcs.xml
+/.idea/muxysql.iml
+/.idea/modules.xml
