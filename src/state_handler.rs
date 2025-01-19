@@ -67,7 +67,13 @@ fn make_packets(buf: &[u8], connection: &Arc<Mutex<Connection>>) -> Vec<Packet> 
 
 fn verify_packet_order(ret: &[Packet], p: &Packet) {
     if ret.len() > 0 {
-        if ret.get(ret.len() - 1).unwrap().header.seq != p.header.seq - 1 {
+
+        let cur_seq = p.header.seq;
+        let prev_seq = ret.get(ret.len() - 1).unwrap().header.seq;
+
+        // Check if current packet seq is previous packet seq + 1.
+        // Special handling for seq 0, as it can occur upon rollover from 255.
+        if (cur_seq != 0 && prev_seq != cur_seq - 1)  || (cur_seq == 0 && prev_seq != 255) {
             panic!("Out of order packet, something is wrong with the decoding!");
         }
     }
