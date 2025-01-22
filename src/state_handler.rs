@@ -21,7 +21,9 @@ pub fn process_frame(
     let packets = make_packets(buf, &mut connection.clone());
 
     for packet in &packets {
-        let mut connection = connection.try_lock().expect("");
+        let mut connection = connection
+            .try_lock()
+            .expect("Transmission race condition / lock failed.");
         match &connection.get_state() {
             State::Initiated => {
                 if packet.is_ok().is_some() {
@@ -40,7 +42,9 @@ fn make_packets(buf: &[u8], connection: &Arc<Mutex<Connection>>) -> Vec<Packet> 
     let mut offset: usize = 0;
 
     loop {
-        let mut connection = connection.lock().expect("");
+        let mut connection = connection
+            .lock()
+            .expect("Connection lock failed when reading packet.");
 
         let mut buffer_vec: Vec<u8> = connection.partial_data.clone().unwrap_or(Vec::new());
         buffer_vec.extend_from_slice(buf);
@@ -67,13 +71,12 @@ fn make_packets(buf: &[u8], connection: &Arc<Mutex<Connection>>) -> Vec<Packet> 
 
 fn verify_packet_order(ret: &[Packet], p: &Packet) {
     if ret.len() > 0 {
-
         let cur_seq = p.header.seq;
         let prev_seq = ret.get(ret.len() - 1).unwrap().header.seq;
 
         // Check if current packet seq is previous packet seq + 1.
         // Special handling for seq 0, as it can occur upon rollover from 255.
-        if (cur_seq != 0 && prev_seq != cur_seq - 1)  || (cur_seq == 0 && prev_seq != 255) {
+        if (cur_seq != 0 && prev_seq != cur_seq - 1) || (cur_seq == 0 && prev_seq != 255) {
             panic!("Out of order packet, something is wrong with the decoding!");
         }
     }

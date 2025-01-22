@@ -1,12 +1,15 @@
 use crate::mysql::packet::Packet;
 
 pub fn print_packet(packet: &Packet) {
-
     let mut print_buffer = String::new();
     // Print bounds
-    print_buffer.push_str("----------------------------------------------------------------------------------\n");
+    print_buffer.push_str(
+        "----------------------------------------------------------------------------------\n",
+    );
     print_buffer.push_str("  0   1   2   3   4   5   6   7   8   9   a   b   c   d   e   f\n");
-    print_buffer.push_str("----------------------------------------------------------------------------------\n");
+    print_buffer.push_str(
+        "----------------------------------------------------------------------------------\n",
+    );
 
     let mut bytes: Vec<u8> = Vec::new();
     bytes.extend_from_slice(&packet.header.to_bytes());
