@@ -11,7 +11,6 @@ pub struct Connection {
 }
 
 impl Connection {
-
     pub fn get_state(&self) -> &State {
         &self.state
     }
@@ -41,7 +40,9 @@ pub enum State {
 }
 
 impl Default for State {
-    fn default() -> State { Initiated }
+    fn default() -> State {
+        Initiated
+    }
 }
 
 #[derive(Debug, PartialEq)]
