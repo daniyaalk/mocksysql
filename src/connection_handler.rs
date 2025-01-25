@@ -35,7 +35,7 @@ fn exchange(
 }
 
 pub fn initiate(client: TcpStream) {
-    let connection: Arc<Mutex<Connection>> = Arc::new(Mutex::new(Connection::new()));
+    let connection: Arc<Mutex<Connection>> = Arc::new(Mutex::new(Connection::default()));
     let connection2 = Arc::clone(&connection);
 
     let target_address: &str = "127.0.0.1:3307";

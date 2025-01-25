@@ -46,7 +46,7 @@ fn make_packets(buf: &[u8], connection: &Arc<Mutex<Connection>>) -> Vec<Packet> 
             .lock()
             .expect("Connection lock failed when reading packet.");
 
-        let mut buffer_vec: Vec<u8> = connection.partial_data.clone().unwrap_or(Vec::new());
+        let mut buffer_vec: Vec<u8> = connection.partial_bytes.clone().unwrap_or(Vec::new());
         buffer_vec.extend_from_slice(buf);
 
         match parse_buffer(&buffer_vec, &mut offset) {
