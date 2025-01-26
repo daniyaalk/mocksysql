@@ -4,7 +4,6 @@ mod connection_handler;
 mod mysql;
 mod state_handler;
 mod util;
-// crate::connection;
 
 fn main() {
     let bind_address: &str = "127.0.0.1:6033";

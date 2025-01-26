@@ -1,9 +1,9 @@
-pub struct DecodeResult <T> {
+pub struct DecodeResult<T> {
     pub result: T,
     pub offset_increment: usize,
 }
 
-pub trait Converter <T> {
+pub trait Converter<T> {
     fn from_bytes(bytes: &Vec<u8>) -> DecodeResult<T>;
 
     // fn to_bytes(&self) -> Vec<u8>;
@@ -52,7 +52,6 @@ impl Converter<u64> for IntLenEnc {
     }
 }
 
-
 pub struct StringLenEnc {}
 
 impl Converter<String> for StringLenEnc {
@@ -77,7 +76,10 @@ mod tests {
 
     #[test]
     fn test_string_len_enc() {
-      let bytes: Vec<u8> = vec![0x18, 0x73, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x20, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x20, 0x77, 0x69, 0x74, 0x68, 0x20, 0x73, 0x70, 0x61, 0x63, 0x65, 0x73];
+        let bytes: Vec<u8> = vec![
+            0x18, 0x73, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x20, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67,
+            0x20, 0x77, 0x69, 0x74, 0x68, 0x20, 0x73, 0x70, 0x61, 0x63, 0x65, 0x73,
+        ];
         let result = StringLenEnc::from_bytes(&bytes);
         assert_eq!(true, "sample string with spaces".eq(&result.result));
         assert_eq!(26, result.offset_increment);

@@ -1,21 +1,21 @@
-use std::{fmt::Error, usize};
 use crate::connection::Phase;
+use std::{fmt::Error, usize};
 
 #[derive(Debug)]
 pub struct Packet {
     pub header: PacketHeader,
     pub body: Vec<u8>,
-    pub p_type: PacketType
+    pub p_type: PacketType,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum PacketType {
     Other,
     Command,
     Ok,
     Eof,
     Error,
-    PartialResultSet
+    PartialResultSet,
 }
 
 #[derive(Debug)]
@@ -60,7 +60,11 @@ impl Packet {
 
         let p_type: PacketType = get_packet_type(phase, &body);
 
-        Ok(Packet { header, body, p_type })
+        Ok(Packet {
+            header,
+            body,
+            p_type,
+        })
     }
 
     #[allow(dead_code)]
@@ -77,20 +81,18 @@ fn get_packet_type(phase: Phase, body: &[u8]) -> PacketType {
     match phase {
         Phase::Auth => PacketType::Other,
         Phase::Command => PacketType::Command,
-        Phase::PendingResponse => {
-            match body[0] {
-                0xff => PacketType::Error,
-                0x00 => PacketType::Ok,
-                0xfe => {
-                    if body.len() > 8 {
-                        PacketType::PartialResultSet
-                    } else {
-                        PacketType::Eof
-                    }
+        Phase::PendingResponse => match body[0] {
+            0xff => PacketType::Error,
+            0x00 => PacketType::Ok,
+            0xfe => {
+                if body.len() > 8 {
+                    PacketType::PartialResultSet
+                } else {
+                    PacketType::Eof
                 }
-                _ => PacketType::PartialResultSet
             }
-        }
+            _ => PacketType::PartialResultSet,
+        },
     }
 }
 

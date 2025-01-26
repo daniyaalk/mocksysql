@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use crate::connection::Phase::Auth;
 use crate::mysql::command::Command;
 

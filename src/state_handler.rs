@@ -1,12 +1,13 @@
+use std::cell::Cell;
 use std::sync::{Arc, Mutex};
 use util::packet_printer;
 
+use crate::mysql::packet::PacketType;
 use crate::{
     connection::{Connection, Direction, Phase},
     mysql::packet::Packet,
     util,
 };
-use crate::mysql::packet::PacketType;
 
 enum PacketParseResult {
     Packet(Packet),
@@ -31,20 +32,18 @@ pub fn process_incoming_frame(
                     connection.mark_auth_done();
                     println!("Auth Done!")
                 }
-            },
+            }
             Phase::Command => {
                 connection.phase = Phase::PendingResponse;
-                connection.last_command = Some(crate::mysql::command::Command::from_bytes(&packet.body));
-            },
-            Phase::PendingResponse => {
-                match packet.p_type
-                {
-                    PacketType::Eof => connection.phase = Phase::Command,
-                    PacketType::Error => connection.phase = Phase::Command,
-                    PacketType:: Ok => connection.phase = Phase::Command,
-                    _ => ()
-                }
+                connection.last_command =
+                    Some(crate::mysql::command::Command::from_bytes(&packet.body));
             }
+            Phase::PendingResponse => match packet.p_type {
+                PacketType::Eof => connection.phase = Phase::Command,
+                PacketType::Error => connection.phase = Phase::Command,
+                PacketType::Ok => connection.phase = Phase::Command,
+                _ => (),
+            },
             _ => (),
         }
     }
@@ -55,9 +54,8 @@ pub fn process_incoming_frame(
 pub fn process_outgoing_packets(
     packets: Vec<Packet>,
     connection: Arc<Mutex<Connection>>,
-    direction: Direction
+    direction: Direction,
 ) -> Option<Vec<u8>> {
-
     None
 }
 

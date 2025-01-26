@@ -1,4 +1,5 @@
 use std::{
+    env,
     io::{Error, Read, Write},
     net::{SocketAddr, TcpStream},
     sync::{Arc, Mutex},
@@ -9,6 +10,8 @@ use crate::{
     connection::{Connection, Direction},
     state_handler,
 };
+use crate::mysql::command::{Command, MySqlCommand};
+use crate::mysql::packet::PacketType;
 
 fn exchange(
     mut from: TcpStream,
@@ -27,6 +30,22 @@ fn exchange(
         }
 
         let packets = state_handler::process_incoming_frame(&buf, &connection, &direction);
+
+        if intercept_enabled() {
+            let connection_mutex = connection.lock().unwrap();
+            let last_command = &connection_mutex.last_command;
+
+            for packet in packets {
+                if packet.p_type.eq(&PacketType::Command)
+                    && last_command.is_some()
+                    && last_command.as_ref().unwrap().com_code.eq(&MySqlCommand::ComQuery)
+                    && last_command.as_ref().unwrap().arg.to_lowercase().starts_with("insert")
+                {
+                    panic!()
+                }
+            }
+        }
+
 
         let x = &mut buf;
 
@@ -69,4 +88,10 @@ pub fn initiate(client: TcpStream) {
 
     client_to_server_channel.join().ok();
     server_to_client_channel.join().ok();
+}
+
+fn intercept_enabled() -> bool {
+    // env::var("INTERCEPT_INSERT").is_ok()
+    //     && env::var("INTERCEPT_INSERT").unwrap().eq("true")
+    true
 }
