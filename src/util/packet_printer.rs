@@ -42,5 +42,6 @@ pub fn print_packet(packet: &Packet) {
         }
     }
     print_buffer.push_str("\n");
+    print_buffer.push_str(format!("Packet type: {:?} \n", packet.p_type).as_str());
     print!("{}", print_buffer);
 }

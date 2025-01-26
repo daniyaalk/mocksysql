@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 use util::packet_printer;
 
 use crate::{
-    connection::{Connection, Direction, State},
+    connection::{Connection, Direction, Phase},
     mysql::packet::Packet,
     util,
 };
@@ -13,11 +13,11 @@ enum PacketParseResult {
     None,
 }
 
-pub fn process_frame(
+pub fn process_incoming_frame(
     buf: &[u8],
     connection: &Arc<Mutex<Connection>>,
     #[allow(unused_variables)] direction: &Direction,
-) {
+) -> Vec<Packet> {
     let packets = make_packets(buf, &mut connection.clone());
 
     for packet in &packets {
@@ -25,7 +25,7 @@ pub fn process_frame(
             .try_lock()
             .expect("Transmission race condition / lock failed.");
         match &connection.get_state() {
-            State::Initiated => {
+            Phase::Auth => {
                 if packet.is_ok().is_some() {
                     connection.mark_auth_done();
                     println!("Auth Done!")
@@ -34,6 +34,17 @@ pub fn process_frame(
             _ => (),
         }
     }
+
+    packets
+}
+
+pub fn process_outgoing_packets(
+    packets: Vec<Packet>,
+    connection: Arc<Mutex<Connection>>,
+    direction: Direction
+) -> Option<Vec<u8>> {
+
+    None
 }
 
 fn make_packets(buf: &[u8], connection: &Arc<Mutex<Connection>>) -> Vec<Packet> {
@@ -49,7 +60,7 @@ fn make_packets(buf: &[u8], connection: &Arc<Mutex<Connection>>) -> Vec<Packet> 
         let mut buffer_vec: Vec<u8> = connection.partial_bytes.clone().unwrap_or(Vec::new());
         buffer_vec.extend_from_slice(buf);
 
-        match parse_buffer(&buffer_vec, &mut offset) {
+        match parse_buffer(&buffer_vec, &mut offset, connection.phase.clone()) {
             PacketParseResult::Packet(p) => {
                 verify_packet_order(&ret, &p);
                 ret.push(p);
@@ -82,7 +93,7 @@ fn verify_packet_order(ret: &[Packet], p: &Packet) {
     }
 }
 
-fn parse_buffer(buf: &Vec<u8>, start_offset: &mut usize) -> PacketParseResult {
+fn parse_buffer(buf: &Vec<u8>, start_offset: &mut usize, phase: Phase) -> PacketParseResult {
     let offset = start_offset.clone();
 
     if offset == buf.len() || buf[offset] == 0 {
@@ -91,7 +102,7 @@ fn parse_buffer(buf: &Vec<u8>, start_offset: &mut usize) -> PacketParseResult {
         return PacketParseResult::None;
     }
 
-    let packet = Packet::from_bytes(&buf[offset..]);
+    let packet = Packet::from_bytes(&buf[offset..], phase);
 
     if packet.is_err() {
         // Unable to parse packet due to buffer going out of bounds.

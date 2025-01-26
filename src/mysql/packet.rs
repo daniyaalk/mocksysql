@@ -1,9 +1,21 @@
 use std::{fmt::Error, usize};
+use crate::connection::Phase;
 
 #[derive(Debug)]
 pub struct Packet {
     pub header: PacketHeader,
     pub body: Vec<u8>,
+    pub p_type: PacketType
+}
+
+#[derive(Debug)]
+pub enum PacketType {
+    Other,
+    Command,
+    Ok,
+    Eof,
+    Error,
+    ResultSet
 }
 
 #[derive(Debug)]
@@ -33,7 +45,7 @@ impl PacketHeader {
 }
 
 impl Packet {
-    pub fn from_bytes(bytes: &[u8]) -> Result<Packet, Error> {
+    pub fn from_bytes(bytes: &[u8], phase: Phase) -> Result<Packet, Error> {
         if bytes.len() < 4 {
             return Err(Error {});
         }
@@ -46,7 +58,9 @@ impl Packet {
         }
         let body = bytes[4..4 + header.size].to_vec();
 
-        Ok(Packet { header, body })
+        let p_type: PacketType = get_packet_type(phase, &body);
+
+        Ok(Packet { header, body, p_type })
     }
 
     #[allow(dead_code)]
@@ -56,6 +70,27 @@ impl Packet {
         ret.extend(self.header.to_bytes());
         ret.extend(self.body.to_vec());
         ret
+    }
+}
+
+fn get_packet_type(phase: Phase, body: &[u8]) -> PacketType {
+    match phase {
+        Phase::Auth => PacketType::Other,
+        Phase::Command => PacketType::Command,
+        Phase::PendingResponse => {
+            match body[0] {
+                0xff => PacketType::Error,
+                0x00 => PacketType::Ok,
+                0xfe => {
+                    if body.len() > 8 {
+                        PacketType::ResultSet
+                    } else {
+                        PacketType::Eof
+                    }
+                }
+                _ => PacketType::ResultSet
+            }
+        }
     }
 }
 

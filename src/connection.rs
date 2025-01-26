@@ -1,22 +1,22 @@
-use crate::connection::State::Initiated;
+use crate::connection::Phase::Auth;
 use crate::mysql::command::Command;
 
 #[allow(dead_code)]
 #[derive(Default)]
 pub struct Connection {
-    pub state: State,
+    pub phase: Phase,
     pub partial_bytes: Option<Vec<u8>>,
     pub partial_result_set: Option<crate::mysql::result_set::ResultSet>,
     pub last_command: Option<Box<Command>>,
 }
 
 impl Connection {
-    pub fn get_state(&self) -> &State {
-        &self.state
+    pub fn get_state(&self) -> &Phase {
+        &self.phase
     }
 
     pub fn mark_auth_done(&mut self) {
-        self.state = State::AuthDone
+        self.phase = Phase::Command
     }
 }
 
@@ -32,16 +32,17 @@ impl Connection {
     }
 }
 
-pub enum State {
-    Initiated,
-    AuthDone,
+#[derive(Clone)]
+pub enum Phase {
+    Auth,
+    Command,
     #[allow(dead_code)]
     PendingResponse,
 }
 
-impl Default for State {
-    fn default() -> State {
-        Initiated
+impl Default for Phase {
+    fn default() -> Phase {
+        Auth
     }
 }
 
