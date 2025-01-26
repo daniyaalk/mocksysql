@@ -6,6 +6,7 @@ use crate::{
     mysql::packet::Packet,
     util,
 };
+use crate::mysql::packet::PacketType;
 
 enum PacketParseResult {
     Packet(Packet),
@@ -29,6 +30,19 @@ pub fn process_incoming_frame(
                 if packet.is_ok().is_some() {
                     connection.mark_auth_done();
                     println!("Auth Done!")
+                }
+            },
+            Phase::Command => {
+                connection.phase = Phase::PendingResponse;
+                connection.last_command = Some(crate::mysql::command::Command::from_bytes(&packet.body));
+            },
+            Phase::PendingResponse => {
+                match packet.p_type
+                {
+                    PacketType::Eof => connection.phase = Phase::Command,
+                    PacketType::Error => connection.phase = Phase::Command,
+                    PacketType:: Ok => connection.phase = Phase::Command,
+                    _ => ()
                 }
             }
             _ => (),

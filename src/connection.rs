@@ -7,7 +7,7 @@ pub struct Connection {
     pub phase: Phase,
     pub partial_bytes: Option<Vec<u8>>,
     pub partial_result_set: Option<crate::mysql::result_set::ResultSet>,
-    pub last_command: Option<Box<Command>>,
+    pub last_command: Option<Command>,
 }
 
 impl Connection {
