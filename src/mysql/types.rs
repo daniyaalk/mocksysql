@@ -4,14 +4,32 @@ pub struct DecodeResult<T> {
 }
 
 pub trait Converter<T> {
-    fn from_bytes(bytes: &Vec<u8>) -> DecodeResult<T>;
-
-    // fn to_bytes(&self) -> Vec<u8>;
+    fn from_bytes(bytes: &Vec<u8>, length: Option<usize>) -> DecodeResult<T>;
 }
 
 pub struct IntLenEnc {}
+
+pub struct StringLenEnc {}
+
+pub struct StringNullEnc {}
+
+pub struct IntFixedLen {}
+
+impl Converter<u64> for IntFixedLen {
+    fn from_bytes(bytes: &Vec<u8>, length: Option<usize>) -> DecodeResult<u64> {
+        if length.is_none() {
+            panic!("IntFixedLen length should be greater than 0");
+        }
+
+        DecodeResult {
+            result: u64::from_le_bytes(bytes[0..length.unwrap()].try_into().unwrap()),
+            offset_increment: length.unwrap(),
+        }
+    }
+}
+
 impl Converter<u64> for IntLenEnc {
-    fn from_bytes(bytes: &Vec<u8>) -> DecodeResult<u64> {
+    fn from_bytes(bytes: &Vec<u8>, _length: Option<usize>) -> DecodeResult<u64> {
         match bytes[0] {
             0xFC => {
                 let value: u64 = 0xFC + ((bytes[1] as u64) << 8) + ((bytes[2] as u64) << 16);
@@ -52,11 +70,9 @@ impl Converter<u64> for IntLenEnc {
     }
 }
 
-pub struct StringLenEnc {}
-
 impl Converter<String> for StringLenEnc {
-    fn from_bytes(bytes: &Vec<u8>) -> DecodeResult<String> {
-        let length = IntLenEnc::from_bytes(bytes);
+    fn from_bytes(bytes: &Vec<u8>, _length: Option<usize>) -> DecodeResult<String> {
+        let length = IntLenEnc::from_bytes(bytes, None);
         let mut result: String = "".to_string();
         let offset = length.offset_increment;
         for i in offset..offset + length.result as usize {
@@ -66,6 +82,28 @@ impl Converter<String> for StringLenEnc {
         DecodeResult {
             offset_increment: length.offset_increment + result.len(),
             result,
+        }
+    }
+}
+
+impl Converter<String> for StringNullEnc {
+    fn from_bytes(bytes: &Vec<u8>, _length: Option<usize>) -> DecodeResult<String> {
+        let mut null_position: Option<usize> = None;
+
+        for i in 0..bytes.len() {
+            if bytes[i] == 0x00 {
+                null_position = Some(i);
+                break;
+            }
+        }
+
+        if null_position.is_none() {
+            panic!("Could not find null byte!");
+        }
+
+        DecodeResult {
+            result: String::from_utf8(bytes[0..null_position.unwrap()].to_vec()).unwrap(),
+            offset_increment: null_position.unwrap() + 1,
         }
     }
 }

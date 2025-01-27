@@ -15,7 +15,7 @@ pub enum PacketType {
     Ok,
     Eof,
     Error,
-    PartialResultSet,
+    PartialResponse,
 }
 
 #[derive(Debug)]
@@ -79,20 +79,21 @@ impl Packet {
 
 fn get_packet_type(phase: Phase, body: &[u8]) -> PacketType {
     match phase {
-        Phase::Auth => PacketType::Other,
+        Phase::Handshake => PacketType::Other,
         Phase::Command => PacketType::Command,
         Phase::PendingResponse => match body[0] {
             0xff => PacketType::Error,
             0x00 => PacketType::Ok,
             0xfe => {
                 if body.len() > 8 {
-                    PacketType::PartialResultSet
+                    PacketType::PartialResponse
                 } else {
                     PacketType::Eof
                 }
             }
-            _ => PacketType::PartialResultSet,
+            _ => PacketType::PartialResponse,
         },
+        _ => PacketType::PartialResponse
     }
 }
 

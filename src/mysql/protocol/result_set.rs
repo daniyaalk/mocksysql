@@ -14,8 +14,7 @@ impl ResultSet {
     pub fn consume(self: &mut Self, packet: &Packet) -> &mut Self {
         match self.state {
             State::Initiated => {
-                self.column_count =
-                    crate::mysql::types::IntLenEnc::from_bytes(&packet.body).result as usize;
+                self.column_count = IntLenEnc::from_bytes(&packet.body, None).result as usize;
                 self.state = State::HydrateColumns
             }
             State::HydrateColumns => {}
@@ -57,38 +56,38 @@ impl ColumnDefinition {
 
         ColumnDefinition {
             catalog: {
-                let result = StringLenEnc::from_bytes(&body[offset..].to_vec());
+                let result = StringLenEnc::from_bytes(&body[offset..].to_vec(), None);
                 assert_eq!("def", result.result);
                 offset += result.offset_increment;
                 result.result
             },
             schema: {
-                let result = StringLenEnc::from_bytes(&body[offset..].to_vec());
+                let result = StringLenEnc::from_bytes(&body[offset..].to_vec(), None);
                 offset += result.offset_increment;
                 result.result
             },
             table: {
-                let result = StringLenEnc::from_bytes(&body[offset..].to_vec());
+                let result = StringLenEnc::from_bytes(&body[offset..].to_vec(), None);
                 offset += result.offset_increment;
                 result.result
             },
             org_table: {
-                let result = StringLenEnc::from_bytes(&body[offset..].to_vec());
+                let result = StringLenEnc::from_bytes(&body[offset..].to_vec(), None);
                 offset += result.offset_increment;
                 result.result
             },
             name: {
-                let result = StringLenEnc::from_bytes(&body[offset..].to_vec());
+                let result = StringLenEnc::from_bytes(&body[offset..].to_vec(), None);
                 offset += result.offset_increment;
                 result.result
             },
             org_name: {
-                let result = StringLenEnc::from_bytes(&body[offset..].to_vec());
+                let result = StringLenEnc::from_bytes(&body[offset..].to_vec(), None);
                 offset += result.offset_increment;
                 result.result
             },
             fixed_length_fields: {
-                let result = IntLenEnc::from_bytes(&body[offset..].to_vec());
+                let result = IntLenEnc::from_bytes(&body[offset..].to_vec(), None);
                 offset += result.offset_increment;
                 result.result
             },
@@ -106,7 +105,7 @@ enum FieldTypes {}
 #[cfg(test)]
 mod tests {
     use crate::connection::Phase;
-    use crate::mysql::result_set::*;
+    use crate::mysql::protocol::result_set::*;
 
     #[test]
     fn test_column_definition_decode() {

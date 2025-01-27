@@ -1,14 +1,15 @@
-use std::cell::Cell;
-use crate::connection::Phase::Auth;
 use crate::mysql::command::Command;
+use std::cell::Cell;
 
 #[allow(dead_code)]
 #[derive(Default)]
 pub struct Connection {
     pub phase: Phase,
     pub partial_bytes: Option<Vec<u8>>,
-    pub partial_result_set: Option<crate::mysql::result_set::ResultSet>,
+    pub partial_result_set: Option<crate::mysql::protocol::result_set::ResultSet>,
     pub last_command: Option<Command>,
+
+    pub handshake: Option<Cell<crate::mysql::accumulator::handshake::Handshake>>,
 }
 
 impl Connection {
@@ -35,7 +36,10 @@ impl Connection {
 
 #[derive(Clone)]
 pub enum Phase {
-    Auth,
+    Handshake,
+    HandshakeResponse,
+    AuthRequest,
+    AuthResponse,
     Command,
     #[allow(dead_code)]
     PendingResponse,
@@ -43,7 +47,7 @@ pub enum Phase {
 
 impl Default for Phase {
     fn default() -> Phase {
-        Auth
+        Phase::Handshake
     }
 }
 

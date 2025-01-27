@@ -27,7 +27,7 @@ pub fn process_incoming_frame(
             .try_lock()
             .expect("Transmission race condition / lock failed.");
         match &connection.get_state() {
-            Phase::Auth => {
+            Phase::Handshake => {
                 if packet.is_ok().is_some() {
                     connection.mark_auth_done();
                     println!("Auth Done!")
