@@ -8,12 +8,10 @@ pub trait Converter<T> {
 }
 
 pub struct IntLenEnc {}
-
-pub struct StringLenEnc {}
-
-pub struct StringNullEnc {}
-
 pub struct IntFixedLen {}
+pub struct StringLenEnc {}
+pub struct StringNullEnc {}
+pub struct StringFixedLen {}
 
 impl Converter<u64> for IntFixedLen {
     fn from_bytes(bytes: &Vec<u8>, length: Option<usize>) -> DecodeResult<u64> {
@@ -21,8 +19,12 @@ impl Converter<u64> for IntFixedLen {
             panic!("IntFixedLen length should be greater than 0");
         }
 
+        let mut buffer = [0u8; 8];
+        let slice = &bytes[0..length.unwrap()];
+        buffer[..slice.len()].copy_from_slice(slice);
+
         DecodeResult {
-            result: u64::from_le_bytes(bytes[0..length.unwrap()].try_into().unwrap()),
+            result: u64::from_le_bytes(buffer),
             offset_increment: length.unwrap(),
         }
     }
@@ -108,6 +110,19 @@ impl Converter<String> for StringNullEnc {
     }
 }
 
+impl Converter<String> for StringFixedLen {
+    fn from_bytes(bytes: &Vec<u8>, length: Option<usize>) -> DecodeResult<String> {
+        if length.is_none() {
+            panic!("StringFixedLen requires length parameter!");
+        }
+
+        DecodeResult {
+            result: String::from_utf8(bytes[0..length.unwrap()].to_vec()).unwrap(),
+            offset_increment: length.unwrap(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,7 +133,7 @@ mod tests {
             0x18, 0x73, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x20, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67,
             0x20, 0x77, 0x69, 0x74, 0x68, 0x20, 0x73, 0x70, 0x61, 0x63, 0x65, 0x73,
         ];
-        let result = StringLenEnc::from_bytes(&bytes);
+        let result = StringLenEnc::from_bytes(&bytes, None);
         assert_eq!(true, "sample string with spaces".eq(&result.result));
         assert_eq!(26, result.offset_increment);
     }

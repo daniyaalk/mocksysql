@@ -93,7 +93,7 @@ fn get_packet_type(phase: Phase, body: &[u8]) -> PacketType {
             }
             _ => PacketType::PartialResponse,
         },
-        _ => PacketType::PartialResponse
+        _ => PacketType::PartialResponse,
     }
 }
 
