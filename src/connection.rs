@@ -9,7 +9,7 @@ pub struct Connection {
     pub partial_result_set: Option<crate::mysql::protocol::result_set::ResultSet>,
     pub last_command: Option<Command>,
 
-    pub handshake: Option<Cell<crate::mysql::accumulator::handshake::Handshake>>,
+    pub handshake: Option<crate::mysql::protocol::handshake::Handshake>,
 }
 
 impl Connection {

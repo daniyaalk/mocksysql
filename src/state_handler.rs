@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::sync::{Arc, Mutex};
 use util::packet_printer;
 
@@ -7,6 +8,8 @@ use crate::{
     mysql::packet::Packet,
     util,
 };
+use crate::mysql::protocol::Accumulator;
+use crate::mysql::protocol::handshake::Handshake;
 
 enum PacketParseResult {
     Packet(Packet),
@@ -27,11 +30,15 @@ pub fn process_incoming_frame(
             .expect("Transmission race condition / lock failed.");
         match &connection.get_state() {
             Phase::Handshake => {
+                let mut handshake = Handshake::default();
+                handshake.consume(packet, &mut connection);
+                connection.handshake = Some(handshake);
                 if packet.is_ok().is_some() {
                     connection.mark_auth_done();
                     println!("Auth Done!")
                 }
             }
+            Phase::HandshakeResponse => (),
             Phase::Command => {
                 connection.phase = Phase::PendingResponse;
                 connection.last_command =
@@ -43,7 +50,8 @@ pub fn process_incoming_frame(
                 PacketType::Ok => connection.phase = Phase::Command,
                 _ => (),
             },
-            _ => (),
+            Phase::AuthRequest => {}
+            Phase::AuthResponse => {}
         }
     }
 

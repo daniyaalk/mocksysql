@@ -1,5 +1,5 @@
-use crate::connection::Connection;
-use crate::mysql::accumulator::Accumulator;
+use crate::connection::{Connection, Phase};
+use crate::mysql::protocol::Accumulator;
 use crate::mysql::packet::Packet;
 use crate::mysql::protocol::CapabilityFlags;
 use crate::mysql::types::{Converter, IntFixedLen, StringFixedLen, StringNullEnc};
@@ -29,7 +29,7 @@ pub struct Handshake {
 }
 
 impl Accumulator for Handshake {
-    fn consume(&mut self, packet: Packet, connection: &mut Connection) -> Self {
+    fn consume(&mut self, packet: &Packet, connection: &mut Connection) -> Self {
         let mut offset: usize = 0;
 
         let protocol_version = {
@@ -133,6 +133,7 @@ impl Accumulator for Handshake {
         };
 
         assert_eq!(offset, packet.body.len());
+        connection.phase = Phase::HandshakeResponse;
 
         Handshake {
             accumulation_complete: true,
@@ -162,8 +163,8 @@ enum StatusFlags {
 #[cfg(test)]
 mod tests {
     use crate::connection::{Connection, Phase};
-    use crate::mysql::accumulator::handshake::Handshake;
-    use crate::mysql::accumulator::Accumulator;
+    use crate::mysql::protocol::handshake::Handshake;
+    use crate::mysql::protocol::Accumulator;
     use crate::mysql::packet::Packet;
 
     #[test]
@@ -183,7 +184,7 @@ mod tests {
         let mut connection = Connection::default();
 
         let mut handshake = Handshake::default();
-        handshake.consume(packet, &mut connection);
+        handshake.consume(&packet, &mut connection);
 
         println!("{:?}", handshake);
         // TODO: Add assertions
