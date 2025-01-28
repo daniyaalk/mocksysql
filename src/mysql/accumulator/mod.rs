@@ -7,5 +7,5 @@ pub mod handshake;
 /// Returns true if no the accumulator expects no further packets (e.g, on the last packet
 /// of a ResultSet).
 pub trait Accumulator {
-    fn consume(&mut self, packet: Packet, connection: &mut Connection) -> bool;
+    fn consume(&mut self, packet: Packet, connection: &mut Connection) -> Self;
 }

@@ -1,12 +1,11 @@
 use std::{
-    env,
     io::{Error, Read, Write},
     net::{SocketAddr, TcpStream},
     sync::{Arc, Mutex},
     thread,
 };
 
-use crate::mysql::command::{Command, MySqlCommand};
+use crate::mysql::command::MySqlCommand;
 use crate::mysql::packet::PacketType;
 use crate::{
     connection::{Connection, Direction},
@@ -55,7 +54,6 @@ fn exchange(
             }
         }
 
-        let x = &mut buf;
 
         to.write_all(&buf[..read_bytes])?;
     }

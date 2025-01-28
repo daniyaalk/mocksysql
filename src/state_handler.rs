@@ -1,4 +1,3 @@
-use std::cell::Cell;
 use std::sync::{Arc, Mutex};
 use util::packet_printer;
 
