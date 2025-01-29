@@ -1,4 +1,6 @@
+use crate::connection::Connection;
 use crate::mysql::packet::Packet;
+use crate::mysql::protocol::Accumulator;
 use crate::mysql::types::{Converter, IntLenEnc, StringLenEnc};
 
 #[derive(Debug, Default)]
@@ -10,19 +12,29 @@ pub struct ResultSet {
     column_count: usize,
 }
 
-impl ResultSet {
-    pub fn consume(self: &mut Self, packet: &Packet) -> &mut Self {
+impl Accumulator for ResultSet {
+    fn consume(&mut self, packet: &Packet, connection: &mut Connection) {
         match self.state {
             State::Initiated => {
                 self.column_count = IntLenEnc::from_bytes(&packet.body, None).result as usize;
                 self.state = State::HydrateColumns
             }
-            State::HydrateColumns => {}
+            State::HydrateColumns => {
+                self.columns.push(
+                    ColumnDefinition::from_packet(packet)
+                );
+                if self.column_count == self.columns.len() {
+                    self.state = State::HydrateRows
+                }
+            }
             State::HydrateRows => {}
             State::Complete => {}
         }
 
-        self
+    }
+
+    fn accumulation_complete(&self) -> bool {
+        true
     }
 }
 

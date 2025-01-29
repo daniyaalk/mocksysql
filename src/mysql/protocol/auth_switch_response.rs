@@ -1,0 +1,26 @@
+use std::fs::read_to_string;
+use crate::connection::{Connection, Phase};
+use crate::mysql::packet::Packet;
+use crate::mysql::protocol::Accumulator;
+use crate::mysql::types::{Converter, IntFixedLen, StringEOFEnc, StringNullEnc};
+
+#[derive(Debug,Default)]
+pub struct AuthSwitchResponse {
+    data: Vec<u8>,
+    accumulation_complete: bool,
+}
+
+impl Accumulator for AuthSwitchResponse {
+    fn consume(&mut self, packet: &Packet, connection: &mut Connection) {
+        let data = packet.body.to_vec();
+
+        connection.phase = Phase::AuthComplete;
+        self.accumulation_complete = true;
+
+        self.data = data;
+    }
+
+    fn accumulation_complete(&self) -> bool {
+        self.accumulation_complete
+    }
+}

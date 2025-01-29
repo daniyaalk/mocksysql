@@ -58,7 +58,7 @@ impl Packet {
         }
         let body = bytes[4..4 + header.size].to_vec();
 
-        let p_type: PacketType = get_packet_type(phase, &body);
+        let p_type: PacketType = get_packet_type(bytes);
 
         Ok(Packet {
             header,
@@ -77,24 +77,20 @@ impl Packet {
     }
 }
 
-fn get_packet_type(phase: Phase, body: &[u8]) -> PacketType {
-    match phase {
-        Phase::Handshake => PacketType::Other,
-        Phase::Command => PacketType::Command,
-        Phase::PendingResponse => match body[0] {
-            0xff => PacketType::Error,
-            0x00 => PacketType::Ok,
-            0xfe => {
-                if body.len() > 8 {
-                    PacketType::PartialResponse
-                } else {
-                    PacketType::Eof
-                }
-            }
-            _ => PacketType::PartialResponse,
-        },
-        _ => PacketType::PartialResponse,
+fn get_packet_type(body: &[u8]) -> PacketType {
+    if body.len() > 7 && body[4] == 0x00 {
+        return PacketType::Ok;
     }
+
+    if body.len() < 9 && body[4] == 0xfe {
+        return PacketType::Eof;
+    }
+
+    if body[4] == 0xff {
+        return PacketType::Eof;
+    }
+
+    PacketType::Other
 }
 
 impl Packet {

@@ -3,13 +3,17 @@ use std::sync::{Arc, Mutex};
 use util::packet_printer;
 
 use crate::mysql::packet::PacketType;
+use crate::mysql::protocol::{handshake::Handshake, handshake_response::HandshakeResponse};
+use crate::mysql::protocol::Accumulator;
 use crate::{
     connection::{Connection, Direction, Phase},
     mysql::packet::Packet,
     util,
 };
-use crate::mysql::protocol::Accumulator;
-use crate::mysql::protocol::handshake::Handshake;
+use crate::mysql::protocol::auth_complete::AuthComplete;
+use crate::mysql::protocol::auth_switch_request::AuthSwitchRequest;
+use crate::mysql::protocol::auth_switch_response::AuthSwitchResponse;
+use crate::mysql::protocol::result_set::ResultSet;
 
 enum PacketParseResult {
     Packet(Packet),
@@ -33,26 +37,50 @@ pub fn process_incoming_frame(
                 let mut handshake = Handshake::default();
                 handshake.consume(packet, &mut connection);
                 connection.handshake = Some(handshake);
-                if packet.is_ok().is_some() {
-                    connection.mark_auth_done();
-                    println!("Auth Done!")
-                }
             }
-            Phase::HandshakeResponse => (),
+            Phase::HandshakeResponse => {
+                let mut handshake_response = HandshakeResponse::default();
+                handshake_response.consume(packet, &mut connection);
+            },
+            Phase::AuthInit => {
+
+                // https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_connection_phase_packets_protocol_auth_switch_request.html
+                if packet.body[0] == 0xfe {
+                    // AuthSwitchRequest
+                    let mut auth_switch_request = AuthSwitchRequest::default();
+                    auth_switch_request.consume(packet, &mut connection);
+                } else {
+                    // AuthComplete
+                }
+            },
+            Phase::AuthSwitchRequest => {
+                // AuthSwitchRequest is not intended to be transitioned into organically,
+                // it should be inferred by 0xfe packet after HandshakeResponse
+                panic!("Untracked state transition");
+            }
+            Phase::AuthSwitchResponse => {
+                let mut auth_switch_response = AuthSwitchResponse::default();
+                auth_switch_response.consume(packet, &mut connection);
+            }
+            Phase::AuthComplete => {
+                let mut auth_complete_accumulation = AuthComplete::default();
+                auth_complete_accumulation.consume(packet, &mut connection);
+            }
+            Phase::AuthFailed => {
+                panic!("Untracked state transition, no transmissions should occur after auth failure.");
+            }
             Phase::Command => {
+                println!("Entered command phase!");
                 connection.phase = Phase::PendingResponse;
                 connection.last_command =
                     Some(crate::mysql::command::Command::from_bytes(&packet.body));
             }
-            Phase::PendingResponse => match packet.p_type {
-                PacketType::Eof => connection.phase = Phase::Command,
-                PacketType::Error => connection.phase = Phase::Command,
-                PacketType::Ok => connection.phase = Phase::Command,
-                _ => (),
+            Phase::PendingResponse => {
+                let mut result_set_accumulator = ResultSet::default();
+                result_set_accumulator.consume(packet, &mut connection);
             },
-            Phase::AuthRequest => {}
-            Phase::AuthResponse => {}
         }
+        println!("{:?}", connection.get_state());
     }
 
     packets

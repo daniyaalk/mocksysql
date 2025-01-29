@@ -13,6 +13,8 @@ pub struct StringLenEnc {}
 pub struct StringNullEnc {}
 pub struct StringFixedLen {}
 
+pub struct StringEOFEnc {}
+
 impl Converter<u64> for IntFixedLen {
     fn from_bytes(bytes: &Vec<u8>, length: Option<usize>) -> DecodeResult<u64> {
         if length.is_none() {
@@ -106,6 +108,18 @@ impl Converter<String> for StringNullEnc {
         DecodeResult {
             result: String::from_utf8(bytes[0..null_position.unwrap()].to_vec()).unwrap(),
             offset_increment: null_position.unwrap() + 1,
+        }
+    }
+}
+
+impl Converter<String> for StringEOFEnc {
+    fn from_bytes(bytes: &Vec<u8>, _length: Option<usize>) -> DecodeResult<String> {
+        DecodeResult {
+            result: String::from_utf8(bytes.to_vec()).unwrap_or_else(|_| {
+                println!("{:?}", bytes);
+                panic!("Could not convert bytes to string!");
+            }),
+            offset_increment: bytes.len(),
         }
     }
 }

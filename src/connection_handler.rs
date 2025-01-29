@@ -54,7 +54,6 @@ fn exchange(
             }
         }
 
-
         to.write_all(&buf[..read_bytes])?;
     }
 

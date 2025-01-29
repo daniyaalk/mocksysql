@@ -1,5 +1,6 @@
 use crate::mysql::command::Command;
 use std::cell::Cell;
+use crate::mysql::protocol::handshake_response::HandshakeResponse;
 
 #[allow(dead_code)]
 #[derive(Default)]
@@ -10,6 +11,7 @@ pub struct Connection {
     pub last_command: Option<Command>,
 
     pub handshake: Option<crate::mysql::protocol::handshake::Handshake>,
+    pub handshake_response: Option<HandshakeResponse>,
 }
 
 impl Connection {
@@ -17,9 +19,6 @@ impl Connection {
         &self.phase
     }
 
-    pub fn mark_auth_done(&mut self) {
-        self.phase = Phase::Command
-    }
 }
 
 impl Connection {
@@ -34,12 +33,15 @@ impl Connection {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Phase {
     Handshake,
     HandshakeResponse,
-    AuthRequest,
-    AuthResponse,
+    AuthInit,
+    AuthSwitchRequest,
+    AuthSwitchResponse,
+    AuthFailed,
+    AuthComplete,
     Command,
     #[allow(dead_code)]
     PendingResponse,

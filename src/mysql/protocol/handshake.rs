@@ -1,6 +1,6 @@
 use crate::connection::{Connection, Phase};
-use crate::mysql::protocol::Accumulator;
 use crate::mysql::packet::Packet;
+use crate::mysql::protocol::Accumulator;
 use crate::mysql::protocol::CapabilityFlags;
 use crate::mysql::types::{Converter, IntFixedLen, StringFixedLen, StringNullEnc};
 use std::cmp::max;
@@ -29,7 +29,7 @@ pub struct Handshake {
 }
 
 impl Accumulator for Handshake {
-    fn consume(&mut self, packet: &Packet, connection: &mut Connection) -> Self {
+    fn consume(&mut self, packet: &Packet, connection: &mut Connection) {
         let mut offset: usize = 0;
 
         let protocol_version = {
@@ -134,24 +134,24 @@ impl Accumulator for Handshake {
 
         assert_eq!(offset, packet.body.len());
         connection.phase = Phase::HandshakeResponse;
+        self.accumulation_complete = true;
+        self.protocol_version=protocol_version;
+        self.server_version=server_version;
+        self.thread_id=thread_id;
+        self.auth_plugin_data_part_1=auth_plugin_data_part_1;
+        self.filler=filler;
+        self.capability_flags_1=capability_flags_1;
+        self.character_set=character_set;
+        self.status_flags=status_flags;
+        self.capability_flags_2=capability_flags_2;
+        self.auth_plugin_data_len=auth_plugin_data_len;
+        self.auth_plugin_data_part_2=auth_plugin_data_part_2;
+        self.auth_plugin_name=auth_plugin_name;
+        self.capability_flags=capability_flags;
+    }
 
-        Handshake {
-            accumulation_complete: true,
-            protocol_version,
-            server_version,
-            thread_id,
-            auth_plugin_data_part_1,
-            filler,
-            capability_flags_1,
-            character_set,
-            status_flags,
-            capability_flags_2,
-            auth_plugin_data_len,
-            auth_plugin_data_part_2,
-            auth_plugin_name,
-
-            capability_flags,
-        }
+    fn accumulation_complete(&self) -> bool {
+        self.accumulation_complete
     }
 }
 
@@ -163,9 +163,9 @@ enum StatusFlags {
 #[cfg(test)]
 mod tests {
     use crate::connection::{Connection, Phase};
+    use crate::mysql::packet::Packet;
     use crate::mysql::protocol::handshake::Handshake;
     use crate::mysql::protocol::Accumulator;
-    use crate::mysql::packet::Packet;
 
     #[test]
     fn test_handshake() {
@@ -178,7 +178,7 @@ mod tests {
                 0x63, 0x61, 0x63, 0x68, 0x69, 0x6e, 0x67, 0x5f, 0x73, 0x68, 0x61, 0x32, 0x5f, 0x70,
                 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x00,
             ],
-            Phase::AuthRequest,
+            Phase::AuthSwitchRequest,
         )
         .unwrap();
         let mut connection = Connection::default();
