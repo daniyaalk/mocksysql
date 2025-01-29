@@ -8,7 +8,7 @@ pub struct Packet {
     pub p_type: PacketType,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum PacketType {
     Other,
     Command,
@@ -87,7 +87,7 @@ fn get_packet_type(body: &[u8]) -> PacketType {
     }
 
     if body[4] == 0xff {
-        return PacketType::Eof;
+        return PacketType::Error;
     }
 
     PacketType::Other
@@ -106,6 +106,10 @@ impl Packet {
         }
 
         None
+    }
+
+    pub fn get_packet_type(&self) -> PacketType {
+        self.p_type.clone() // TODO: Change this to a Cell
     }
 }
 

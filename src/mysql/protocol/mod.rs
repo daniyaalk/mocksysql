@@ -1,12 +1,12 @@
 use crate::connection::Connection;
 use crate::mysql::packet::Packet;
 
+pub mod auth_complete;
+pub mod auth_switch_request;
+pub mod auth_switch_response;
 pub mod handshake;
 pub mod handshake_response;
 pub mod result_set;
-pub mod auth_switch_request;
-pub mod auth_switch_response;
-pub mod auth_complete;
 
 #[repr(u32)]
 pub enum CapabilityFlags {
@@ -16,6 +16,8 @@ pub enum CapabilityFlags {
     ClientPluginAuth = 0x01 << 19,
     ClientConnectAttrs = 0x01 << 20,
     ClientPluginAuthLenEncClientData = 0x1 << 21,
+    ClientDeprecateEof = 0x1 << 24,
+    ClientOptionalResultSetMetadata = 0x1 << 25,
     ClientZSTDCompressionAlgorithm = 0x1 << 26,
 }
 

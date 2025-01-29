@@ -135,19 +135,19 @@ impl Accumulator for Handshake {
         assert_eq!(offset, packet.body.len());
         connection.phase = Phase::HandshakeResponse;
         self.accumulation_complete = true;
-        self.protocol_version=protocol_version;
-        self.server_version=server_version;
-        self.thread_id=thread_id;
-        self.auth_plugin_data_part_1=auth_plugin_data_part_1;
-        self.filler=filler;
-        self.capability_flags_1=capability_flags_1;
-        self.character_set=character_set;
-        self.status_flags=status_flags;
-        self.capability_flags_2=capability_flags_2;
-        self.auth_plugin_data_len=auth_plugin_data_len;
-        self.auth_plugin_data_part_2=auth_plugin_data_part_2;
-        self.auth_plugin_name=auth_plugin_name;
-        self.capability_flags=capability_flags;
+        self.protocol_version = protocol_version;
+        self.server_version = server_version;
+        self.thread_id = thread_id;
+        self.auth_plugin_data_part_1 = auth_plugin_data_part_1;
+        self.filler = filler;
+        self.capability_flags_1 = capability_flags_1;
+        self.character_set = character_set;
+        self.status_flags = status_flags;
+        self.capability_flags_2 = capability_flags_2;
+        self.auth_plugin_data_len = auth_plugin_data_len;
+        self.auth_plugin_data_part_2 = auth_plugin_data_part_2;
+        self.auth_plugin_name = auth_plugin_name;
+        self.capability_flags = capability_flags;
     }
 
     fn accumulation_complete(&self) -> bool {

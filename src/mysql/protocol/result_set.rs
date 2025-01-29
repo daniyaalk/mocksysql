@@ -1,36 +1,80 @@
-use crate::connection::Connection;
-use crate::mysql::packet::Packet;
-use crate::mysql::protocol::Accumulator;
+use crate::connection::{Connection, Phase};
+use crate::mysql::command::MySqlCommand;
+use crate::mysql::packet::{Packet, PacketType};
+use crate::mysql::protocol::{Accumulator, CapabilityFlags};
 use crate::mysql::types::{Converter, IntLenEnc, StringLenEnc};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ResultSet {
     state: State,
+    metadata_follows: bool,
     columns: Vec<ColumnDefinition>,
     rows: Vec<Vec<String>>,
     row_count: usize,
+    status: Option<PacketType>,
     column_count: usize,
+    accumulation_complete: bool,
 }
 
 impl Accumulator for ResultSet {
     fn consume(&mut self, packet: &Packet, connection: &mut Connection) {
         match self.state {
             State::Initiated => {
+
+                if connection.get_last_command().is_some()
+                    && connection.get_last_command().unwrap().com_code == MySqlCommand::ComQuery
+                {
+                    self.metadata_follows = true;
+                    if &connection.get_handshake_response().unwrap().client_flag
+                        & CapabilityFlags::ClientOptionalResultSetMetadata as u32
+                        != 0
+                    {
+                        self.state = State::MetaExchange;
+                    } else {
+                        self.state = State::ColumnCount;
+                    }
+                } else {
+                    self.state = State::Complete;
+                }
+                self.consume(packet, connection);
+            }
+            State::MetaExchange => {
+                self.metadata_follows = {
+                    let result = IntLenEnc::from_bytes(&packet.body, Some(1));
+                    result.result == 0
+                };
+                self.state = State::ColumnCount;
+            }
+            State::ColumnCount => {
                 self.column_count = IntLenEnc::from_bytes(&packet.body, None).result as usize;
                 self.state = State::HydrateColumns
             }
             State::HydrateColumns => {
-                self.columns.push(
-                    ColumnDefinition::from_packet(packet)
-                );
+                self.columns.push(ColumnDefinition::from_packet(packet));
                 if self.column_count == self.columns.len() {
+                    self.state = State::ColumnsHydrated
+                }
+            },
+            State::ColumnsHydrated => {
+
+                if !connection.get_handshake_response().unwrap().client_flag & CapabilityFlags::ClientDeprecateEof as u32 != 0 {
+                    assert_eq!(PacketType::Eof, packet.get_packet_type());
                     self.state = State::HydrateRows
                 }
-            }
-            State::HydrateRows => {}
-            State::Complete => {}
-        }
 
+            },
+            State::HydrateRows => {
+                if packet.get_packet_type() != PacketType::Other {
+                    self.state = State::Complete;
+                }
+
+            }
+            State::Complete => {
+                self.status = Some(packet.get_packet_type());
+                self.accumulation_complete = true;
+                connection.phase = Phase::Command;
+            }
+        }
     }
 
     fn accumulation_complete(&self) -> bool {
@@ -38,16 +82,19 @@ impl Accumulator for ResultSet {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 enum State {
     #[default]
     Initiated,
+    MetaExchange,
+    ColumnCount,
     HydrateColumns,
+    ColumnsHydrated,
     HydrateRows,
     Complete,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct ColumnDefinition {
     catalog: String,
     schema: String,

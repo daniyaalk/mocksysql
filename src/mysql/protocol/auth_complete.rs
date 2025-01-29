@@ -4,7 +4,7 @@ use crate::mysql::protocol::Accumulator;
 
 #[derive(Default)]
 pub struct AuthComplete {
-    accumulation_complete: bool
+    accumulation_complete: bool,
 }
 
 impl Accumulator for AuthComplete {

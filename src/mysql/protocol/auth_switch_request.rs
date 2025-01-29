@@ -1,10 +1,10 @@
-use std::fs::read_to_string;
 use crate::connection::{Connection, Phase};
 use crate::mysql::packet::Packet;
 use crate::mysql::protocol::Accumulator;
 use crate::mysql::types::{Converter, IntFixedLen, StringEOFEnc, StringNullEnc};
+use std::fs::read_to_string;
 
-#[derive(Debug,Default)]
+#[derive(Debug, Default)]
 pub struct AuthSwitchRequest {
     status_tag: u8,
     plugin_name: String,
