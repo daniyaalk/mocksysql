@@ -3,6 +3,7 @@ use crate::mysql::command::MySqlCommand;
 use crate::mysql::packet::{Packet, PacketType};
 use crate::mysql::protocol::{Accumulator, CapabilityFlags};
 use crate::mysql::types::{Converter, IntLenEnc, StringLenEnc};
+use std::rc::Rc;
 
 #[derive(Debug, Default, Clone)]
 pub struct ResultSet {
@@ -17,15 +18,16 @@ pub struct ResultSet {
 }
 
 impl Accumulator for ResultSet {
-    fn consume(&mut self, packet: &Packet, connection: &mut Connection) {
+    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
+        let mut next_phase = connection.phase.clone();
+
         match self.state {
             State::Initiated => {
-
                 if connection.get_last_command().is_some()
                     && connection.get_last_command().unwrap().com_code == MySqlCommand::ComQuery
                 {
                     self.metadata_follows = true;
-                    if &connection.get_handshake_response().unwrap().client_flag
+                    if connection.get_handshake_response().unwrap().client_flag
                         & CapabilityFlags::ClientOptionalResultSetMetadata as u32
                         != 0
                     {
@@ -36,7 +38,7 @@ impl Accumulator for ResultSet {
                 } else {
                     self.state = State::Complete;
                 }
-                self.consume(packet, connection);
+                next_phase = self.consume(packet, connection)
             }
             State::MetaExchange => {
                 self.metadata_follows = {
@@ -47,34 +49,39 @@ impl Accumulator for ResultSet {
             }
             State::ColumnCount => {
                 self.column_count = IntLenEnc::from_bytes(&packet.body, None).result as usize;
-                self.state = State::HydrateColumns
+                self.state = State::HydrateColumns;
             }
             State::HydrateColumns => {
                 self.columns.push(ColumnDefinition::from_packet(packet));
                 if self.column_count == self.columns.len() {
-                    self.state = State::ColumnsHydrated
+                    self.state = State::ColumnsHydrated;
                 }
-            },
+            }
             State::ColumnsHydrated => {
-
-                if !connection.get_handshake_response().unwrap().client_flag & CapabilityFlags::ClientDeprecateEof as u32 != 0 {
+                if !connection.get_handshake_response().unwrap().client_flag
+                    & CapabilityFlags::ClientDeprecateEof as u32
+                    != 0
+                {
                     assert_eq!(PacketType::Eof, packet.get_packet_type());
-                    self.state = State::HydrateRows
+                    self.state = State::HydrateRows;
+                } else {
+                    self.state = State::HydrateRows;
+                    next_phase = self.consume(&packet, connection);
                 }
-
-            },
+            }
             State::HydrateRows => {
                 if packet.get_packet_type() != PacketType::Other {
                     self.state = State::Complete;
+                    next_phase = self.consume(packet, connection);
                 }
-
             }
             State::Complete => {
                 self.status = Some(packet.get_packet_type());
                 self.accumulation_complete = true;
-                connection.phase = Phase::Command;
+                next_phase = Phase::Command
             }
         }
+        next_phase
     }
 
     fn accumulation_complete(&self) -> bool {
@@ -165,6 +172,7 @@ enum FieldTypes {}
 mod tests {
     use crate::connection::Phase;
     use crate::mysql::protocol::result_set::*;
+    use std::cell::RefCell;
 
     #[test]
     fn test_column_definition_decode() {

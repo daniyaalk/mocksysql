@@ -27,20 +27,21 @@ pub fn process_incoming_frame(
     #[allow(unused_variables)] direction: &Direction,
 ) -> Vec<Packet> {
     let packets = make_packets(buf, &mut connection.clone());
-
+    let mut pending_response = ResultSet::default();
+    
     for packet in &packets {
         let mut connection = connection
             .try_lock()
             .expect("Transmission race condition / lock failed.");
-        match &connection.get_state() {
+        match &connection.get_state().clone() {
             Phase::Handshake => {
                 let mut handshake = Handshake::default();
-                handshake.consume(packet, &mut connection);
+                connection.phase = handshake.consume(packet, &connection);
                 connection.handshake = Some(handshake);
             }
             Phase::HandshakeResponse => {
                 let mut handshake_response = HandshakeResponse::default();
-                handshake_response.consume(packet, &mut connection);
+                connection.phase = handshake_response.consume(packet, &connection);
                 connection.handshake_response = Some(handshake_response);
             }
             Phase::AuthInit => {
@@ -48,7 +49,7 @@ pub fn process_incoming_frame(
                 if packet.body[0] == 0xfe {
                     // AuthSwitchRequest
                     let mut auth_switch_request = AuthSwitchRequest::default();
-                    auth_switch_request.consume(packet, &mut connection);
+                    connection.phase = auth_switch_request.consume(packet, &connection);
                 } else {
                     // AuthComplete
                 }
@@ -60,11 +61,11 @@ pub fn process_incoming_frame(
             }
             Phase::AuthSwitchResponse => {
                 let mut auth_switch_response = AuthSwitchResponse::default();
-                auth_switch_response.consume(packet, &mut connection);
+                connection.phase = auth_switch_response.consume(packet, &connection);
             }
             Phase::AuthComplete => {
                 let mut auth_complete_accumulation = AuthComplete::default();
-                auth_complete_accumulation.consume(packet, &mut connection);
+                connection.phase = auth_complete_accumulation.consume(packet, &connection);
             }
             Phase::AuthFailed => {
                 panic!(
@@ -78,11 +79,14 @@ pub fn process_incoming_frame(
                     Some(crate::mysql::command::Command::from_bytes(&packet.body));
             }
             Phase::PendingResponse => {
-                let result_set = connection.get_result_set(); // Yuck!
-                result_set.borrow_mut().consume(packet, &mut connection);
+                connection.phase = pending_response.consume(packet, &connection);
             }
         }
+        
         println!("{:?}", connection.get_state());
+    }
+    if pending_response.accumulation_complete() {
+        println!("{:?}", pending_response);
     }
 
     packets

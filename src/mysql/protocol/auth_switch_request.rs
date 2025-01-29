@@ -13,7 +13,7 @@ pub struct AuthSwitchRequest {
 }
 
 impl Accumulator for AuthSwitchRequest {
-    fn consume(&mut self, packet: &Packet, connection: &mut Connection) {
+    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
         let mut offset: usize = 0;
 
         let status_tag = {
@@ -35,11 +35,12 @@ impl Accumulator for AuthSwitchRequest {
             result.result
         };
 
-        connection.phase = Phase::AuthSwitchResponse;
         self.accumulation_complete = true;
         self.status_tag = status_tag;
         self.plugin_name = plugin_name;
         self.plugin_provided_data = plugin_provided_data;
+
+        Phase::AuthSwitchResponse
     }
 
     fn accumulation_complete(&self) -> bool {

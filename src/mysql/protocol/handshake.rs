@@ -29,7 +29,7 @@ pub struct Handshake {
 }
 
 impl Accumulator for Handshake {
-    fn consume(&mut self, packet: &Packet, connection: &mut Connection) {
+    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
         let mut offset: usize = 0;
 
         let protocol_version = {
@@ -133,7 +133,6 @@ impl Accumulator for Handshake {
         };
 
         assert_eq!(offset, packet.body.len());
-        connection.phase = Phase::HandshakeResponse;
         self.accumulation_complete = true;
         self.protocol_version = protocol_version;
         self.server_version = server_version;
@@ -148,6 +147,8 @@ impl Accumulator for Handshake {
         self.auth_plugin_data_part_2 = auth_plugin_data_part_2;
         self.auth_plugin_name = auth_plugin_name;
         self.capability_flags = capability_flags;
+
+        Phase::HandshakeResponse
     }
 
     fn accumulation_complete(&self) -> bool {
@@ -181,10 +182,10 @@ mod tests {
             Phase::AuthSwitchRequest,
         )
         .unwrap();
-        let mut connection = Connection::default();
+        let connection = Connection::default();
 
         let mut handshake = Handshake::default();
-        handshake.consume(&packet, &mut connection);
+        handshake.consume(&packet, &connection);
 
         println!("{:?}", handshake);
         // TODO: Add assertions

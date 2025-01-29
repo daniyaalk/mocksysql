@@ -11,13 +11,13 @@ pub struct AuthSwitchResponse {
 }
 
 impl Accumulator for AuthSwitchResponse {
-    fn consume(&mut self, packet: &Packet, connection: &mut Connection) {
+    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
         let data = packet.body.to_vec();
 
-        connection.phase = Phase::AuthComplete;
         self.accumulation_complete = true;
 
         self.data = data;
+        Phase::AuthComplete
     }
 
     fn accumulation_complete(&self) -> bool {

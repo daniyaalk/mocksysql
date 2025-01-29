@@ -1,4 +1,4 @@
-use crate::connection::Connection;
+use crate::connection::{Connection, Phase};
 use crate::mysql::packet::Packet;
 
 pub mod auth_complete;
@@ -21,11 +21,11 @@ pub enum CapabilityFlags {
     ClientZSTDCompressionAlgorithm = 0x1 << 26,
 }
 
-/// Consumes a given packet and updates the connection state accordingly.
+/// Consumes a given packet and returns the phase to transition the connection into.
 /// Returns true if no the accumulator expects no further packets (e.g, on the last packet
 /// of a ResultSet).
 pub trait Accumulator {
-    fn consume(&mut self, packet: &Packet, connection: &mut Connection);
+    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase;
 
     fn accumulation_complete(&self) -> bool;
 }

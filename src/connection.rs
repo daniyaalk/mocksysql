@@ -1,8 +1,8 @@
-use std::cell::{Cell, RefCell};
 use crate::mysql::command::Command;
 use crate::mysql::protocol::handshake_response::HandshakeResponse;
-use std::rc::Rc;
 use crate::mysql::protocol::result_set::ResultSet;
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 
 #[allow(dead_code)]
 #[derive(Default)]
@@ -13,7 +13,7 @@ pub struct Connection {
 
     pub handshake: Option<crate::mysql::protocol::handshake::Handshake>,
     pub handshake_response: Option<HandshakeResponse>,
-    pub result_set: RefCell<ResultSet>,
+    pub result_set: ResultSet,
 }
 
 impl Connection {
@@ -28,9 +28,9 @@ impl Connection {
     pub fn get_handshake_response(&self) -> Option<&HandshakeResponse> {
         self.handshake_response.as_ref()
     }
-    
-    pub fn get_result_set(&self) -> &RefCell<ResultSet> {
-        &self.result_set
+
+    pub fn get_result_set(&mut self) -> &ResultSet {
+        &mut self.result_set
     }
 }
 

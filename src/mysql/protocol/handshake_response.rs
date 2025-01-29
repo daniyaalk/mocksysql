@@ -29,7 +29,7 @@ pub struct HandshakeResponse {
 }
 
 impl Accumulator for HandshakeResponse {
-    fn consume(&mut self, packet: &Packet, connection: &mut Connection) {
+    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
         let mut offset: usize = 0;
 
         let client_flag = {
@@ -143,7 +143,6 @@ impl Accumulator for HandshakeResponse {
             zstd_compression_level = 0;
         }
 
-        connection.phase = Phase::AuthInit;
         self.accumulation_complete = true;
         assert_eq!(offset, packet.body.len());
 
@@ -159,6 +158,8 @@ impl Accumulator for HandshakeResponse {
         self.connection_attrs_length = connection_attrs_length;
         self.connection_attrs = connection_attrs;
         self.zstd_compression_level = zstd_compression_level;
+
+        Phase::AuthInit
     }
 
     fn accumulation_complete(&self) -> bool {
@@ -175,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_handshake_response() {
-        let mut connection = Connection::default();
+        let connection = Connection::default();
         let packet = Packet::from_bytes(
             &[
                 0xe2, 0x00, 0x00, 0x01, 0x8d, 0xa6, 0xff, 0x19, 0x00, 0x00, 0x00, 0x01, 0xff, 0x00,
@@ -199,7 +200,7 @@ mod tests {
             Phase::HandshakeResponse,
         );
 
-        let response = HandshakeResponse::default().consume(&packet.unwrap(), &mut connection);
+        let response = HandshakeResponse::default().consume(&packet.unwrap(), &connection);
         println!("{:#?}", response);
     }
 }

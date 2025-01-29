@@ -8,13 +8,17 @@ pub struct AuthComplete {
 }
 
 impl Accumulator for AuthComplete {
-    fn consume(&mut self, packet: &Packet, connection: &mut Connection) {
+    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
+        let phase;
         if PacketType::Ok == packet.p_type {
-            connection.phase = Phase::Command;
+            phase = Phase::Command;
         } else if PacketType::Error == packet.p_type {
-            connection.phase = Phase::AuthFailed;
+            phase = Phase::AuthFailed;
+        } else {
+            panic!("Unexpected packet type: {:?}", packet.p_type)
         }
         self.accumulation_complete = true;
+        phase
     }
 
     fn accumulation_complete(&self) -> bool {
