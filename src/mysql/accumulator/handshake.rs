@@ -1,7 +1,7 @@
 use crate::connection::{Connection, Phase};
 use crate::mysql::packet::Packet;
-use crate::mysql::protocol::Accumulator;
-use crate::mysql::protocol::CapabilityFlags;
+use crate::mysql::accumulator::Accumulator;
+use crate::mysql::accumulator::CapabilityFlags;
 use crate::mysql::types::{Converter, IntFixedLen, StringFixedLen, StringNullEnc};
 use std::cmp::max;
 
@@ -10,7 +10,7 @@ const PLUGIN_DATA_MAX_LENGTH: u8 = 21;
 
 /// https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_connection_phase_packets_protocol_handshake_v10.html
 #[derive(Debug, Default)]
-pub struct Handshake {
+pub struct HandshakeAccumulator {
     accumulation_complete: bool,
     protocol_version: u8,
     server_version: String,
@@ -28,7 +28,7 @@ pub struct Handshake {
     capability_flags: u32,
 }
 
-impl Accumulator for Handshake {
+impl Accumulator for HandshakeAccumulator {
     fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
         let mut offset: usize = 0;
 
@@ -165,8 +165,8 @@ enum StatusFlags {
 mod tests {
     use crate::connection::{Connection, Phase};
     use crate::mysql::packet::Packet;
-    use crate::mysql::protocol::handshake::Handshake;
-    use crate::mysql::protocol::Accumulator;
+    use crate::mysql::accumulator::handshake::HandshakeAccumulator;
+    use crate::mysql::accumulator::Accumulator;
 
     #[test]
     fn test_handshake() {
@@ -184,7 +184,7 @@ mod tests {
         .unwrap();
         let connection = Connection::default();
 
-        let mut handshake = Handshake::default();
+        let mut handshake = HandshakeAccumulator::default();
         handshake.consume(&packet, &connection);
 
         println!("{:?}", handshake);

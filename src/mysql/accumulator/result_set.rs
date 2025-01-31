@@ -1,12 +1,12 @@
 use crate::connection::{Connection, Phase};
 use crate::mysql::command::MySqlCommand;
 use crate::mysql::packet::{Packet, PacketType};
-use crate::mysql::protocol::{Accumulator, CapabilityFlags};
+use crate::mysql::accumulator::{Accumulator, CapabilityFlags};
 use crate::mysql::types::{Converter, IntLenEnc, StringLenEnc};
 use std::rc::Rc;
 
 #[derive(Debug, Default, Clone)]
-pub struct ResultSet {
+pub struct ResultSetAccumulator {
     state: State,
     metadata_follows: bool,
     columns: Vec<ColumnDefinition>,
@@ -17,7 +17,7 @@ pub struct ResultSet {
     accumulation_complete: bool,
 }
 
-impl Accumulator for ResultSet {
+impl Accumulator for ResultSetAccumulator {
     fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
         let mut next_phase = connection.phase.clone();
 
@@ -171,7 +171,7 @@ enum FieldTypes {}
 #[cfg(test)]
 mod tests {
     use crate::connection::Phase;
-    use crate::mysql::protocol::result_set::*;
+    use crate::mysql::accumulator::result_set::*;
     use std::cell::RefCell;
 
     #[test]

@@ -2,6 +2,7 @@ use crate::connection::{Connection, Phase};
 use crate::mysql::packet::Packet;
 
 pub mod auth_complete;
+pub mod auth_init;
 pub mod auth_switch_request;
 pub mod auth_switch_response;
 pub mod handshake;

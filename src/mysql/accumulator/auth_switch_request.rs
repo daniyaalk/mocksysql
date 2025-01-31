@@ -1,18 +1,18 @@
 use crate::connection::{Connection, Phase};
 use crate::mysql::packet::Packet;
-use crate::mysql::protocol::Accumulator;
+use crate::mysql::accumulator::Accumulator;
 use crate::mysql::types::{Converter, IntFixedLen, StringEOFEnc, StringNullEnc};
 use std::fs::read_to_string;
 
 #[derive(Debug, Default)]
-pub struct AuthSwitchRequest {
+pub struct AuthSwitchRequestAccumulator {
     status_tag: u8,
     plugin_name: String,
     plugin_provided_data: String,
     accumulation_complete: bool,
 }
 
-impl Accumulator for AuthSwitchRequest {
+impl Accumulator for AuthSwitchRequestAccumulator {
     fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
         let mut offset: usize = 0;
 

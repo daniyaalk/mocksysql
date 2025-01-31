@@ -1,13 +1,13 @@
 use crate::connection::{Connection, Phase};
 use crate::mysql::packet::{Packet, PacketType};
-use crate::mysql::protocol::Accumulator;
+use crate::mysql::accumulator::Accumulator;
 
 #[derive(Default)]
-pub struct AuthComplete {
+pub struct AuthCompleteAccumulator {
     accumulation_complete: bool,
 }
 
-impl Accumulator for AuthComplete {
+impl Accumulator for AuthCompleteAccumulator {
     fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
         let phase;
         if PacketType::Ok == packet.p_type {

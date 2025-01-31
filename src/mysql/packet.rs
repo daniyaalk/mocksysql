@@ -58,7 +58,7 @@ impl Packet {
         }
         let body = bytes[4..4 + header.size].to_vec();
 
-        let p_type: PacketType = get_packet_type(&body);
+        let p_type: PacketType = get_packet_type(&body, phase);
 
         Ok(Packet {
             header,
@@ -77,8 +77,7 @@ impl Packet {
     }
 }
 
-fn get_packet_type(body: &Vec<u8>) -> PacketType {
-    
+fn get_packet_type(body: &[u8], phase: Phase) -> PacketType {
     // TODO: Look into this, the mysql documentation suggests a packet size of 7 and 9 respectively.
     if body.len() >= 7 && body[0] == 0x00 {
         return PacketType::Ok;
@@ -91,6 +90,8 @@ fn get_packet_type(body: &Vec<u8>) -> PacketType {
     if body[0] == 0xff {
         return PacketType::Error;
     }
+    
+    if Phase::Command == phase {}
 
     PacketType::Other
 }

@@ -1,4 +1,4 @@
 pub mod command;
 pub mod packet;
-pub mod protocol;
+pub mod accumulator;
 pub mod types;

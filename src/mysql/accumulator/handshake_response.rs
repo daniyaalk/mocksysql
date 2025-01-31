@@ -1,6 +1,6 @@
 use crate::connection::{Connection, Phase};
 use crate::mysql::packet::Packet;
-use crate::mysql::protocol::{Accumulator, CapabilityFlags};
+use crate::mysql::accumulator::{Accumulator, CapabilityFlags};
 use crate::mysql::types::{
     Converter, IntFixedLen, IntLenEnc, StringFixedLen, StringLenEnc, StringNullEnc,
 };
@@ -12,7 +12,7 @@ const FILLER: &str = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 /// https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_connection_phase_packets_protocol_handshake_response.html#sect_protocol_connection_phase_packets_protocol_handshake_response41
 
 #[derive(Debug, Default)]
-pub struct HandshakeResponse {
+pub struct HandshakeResponseAccumulator {
     pub client_flag: u32,
     max_packet_size: u32,
     character_set: u8,
@@ -28,7 +28,7 @@ pub struct HandshakeResponse {
     accumulation_complete: bool,
 }
 
-impl Accumulator for HandshakeResponse {
+impl Accumulator for HandshakeResponseAccumulator {
     fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
         let mut offset: usize = 0;
 
@@ -39,7 +39,7 @@ impl Accumulator for HandshakeResponse {
         };
 
         if client_flag & CapabilityFlags::ClientProtocol41 as u32 == 0 {
-            panic!("Client protocol not supported");
+            panic!("Client accumulator not supported");
         }
 
         let max_packet_size = {
@@ -171,8 +171,8 @@ impl Accumulator for HandshakeResponse {
 mod tests {
     use crate::connection::{Connection, Phase};
     use crate::mysql::packet::Packet;
-    use crate::mysql::protocol::handshake_response::HandshakeResponse;
-    use crate::mysql::protocol::Accumulator;
+    use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
+    use crate::mysql::accumulator::Accumulator;
 
     #[test]
     fn test_handshake_response() {
@@ -200,7 +200,7 @@ mod tests {
             Phase::HandshakeResponse,
         );
 
-        let response = HandshakeResponse::default().consume(&packet.unwrap(), &connection);
+        let response = HandshakeResponseAccumulator::default().consume(&packet.unwrap(), &connection);
         println!("{:#?}", response);
     }
 }

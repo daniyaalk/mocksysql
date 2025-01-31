@@ -1,14 +1,15 @@
-use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex};
 use util::packet_printer;
 
-use crate::mysql::packet::PacketType;
-use crate::mysql::protocol::auth_complete::AuthComplete;
-use crate::mysql::protocol::auth_switch_request::AuthSwitchRequest;
-use crate::mysql::protocol::auth_switch_response::AuthSwitchResponse;
-use crate::mysql::protocol::result_set::ResultSet;
-use crate::mysql::protocol::Accumulator;
-use crate::mysql::protocol::{handshake::Handshake, handshake_response::HandshakeResponse};
+use crate::mysql::accumulator::auth_complete::AuthCompleteAccumulator;
+use crate::mysql::accumulator::auth_init::AuthInitAccumulator;
+use crate::mysql::accumulator::auth_switch_request::AuthSwitchRequestAccumulator;
+use crate::mysql::accumulator::auth_switch_response::AuthSwitchResponseAccumulator;
+use crate::mysql::accumulator::result_set::ResultSetAccumulator;
+use crate::mysql::accumulator::Accumulator;
+use crate::mysql::accumulator::{
+    handshake::HandshakeAccumulator, handshake_response::HandshakeResponseAccumulator,
+};
 use crate::{
     connection::{Connection, Direction, Phase},
     mysql::packet::Packet,
@@ -26,29 +27,30 @@ pub fn process_incoming_frame(
     connection: &Arc<Mutex<Connection>>,
     #[allow(unused_variables)] direction: &Direction,
 ) -> Vec<Packet> {
-    let packets = make_packets(buf, &mut connection.clone());
-    let mut pending_response = ResultSet::default();
-    
+    let packets = make_packets(buf, connection.clone());
+    let mut pending_response = ResultSetAccumulator::default();
+
     for packet in &packets {
         let mut connection = connection
             .try_lock()
             .expect("Transmission race condition / lock failed.");
+        // get_accumulator()
         match &connection.get_state().clone() {
             Phase::Handshake => {
-                let mut handshake = Handshake::default();
+                let mut handshake = HandshakeAccumulator::default();
                 connection.phase = handshake.consume(packet, &connection);
                 connection.handshake = Some(handshake);
             }
             Phase::HandshakeResponse => {
-                let mut handshake_response = HandshakeResponse::default();
+                let mut handshake_response = HandshakeResponseAccumulator::default();
                 connection.phase = handshake_response.consume(packet, &connection);
                 connection.handshake_response = Some(handshake_response);
             }
             Phase::AuthInit => {
-                // https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_connection_phase_packets_protocol_auth_switch_request.html
                 if packet.body[0] == 0xfe {
                     // AuthSwitchRequest
-                    let mut auth_switch_request = AuthSwitchRequest::default();
+                    connection.phase = Phase::AuthSwitchRequest;
+                    let mut auth_switch_request = AuthSwitchRequestAccumulator::default();
                     connection.phase = auth_switch_request.consume(packet, &connection);
                 } else {
                     // AuthComplete
@@ -60,11 +62,11 @@ pub fn process_incoming_frame(
                 panic!("Untracked state transition");
             }
             Phase::AuthSwitchResponse => {
-                let mut auth_switch_response = AuthSwitchResponse::default();
+                let mut auth_switch_response = AuthSwitchResponseAccumulator::default();
                 connection.phase = auth_switch_response.consume(packet, &connection);
             }
             Phase::AuthComplete => {
-                let mut auth_complete_accumulation = AuthComplete::default();
+                let mut auth_complete_accumulation = AuthCompleteAccumulator::default();
                 connection.phase = auth_complete_accumulation.consume(packet, &connection);
             }
             Phase::AuthFailed => {
@@ -82,7 +84,7 @@ pub fn process_incoming_frame(
                 connection.phase = pending_response.consume(packet, &connection);
             }
         }
-        
+
         println!("{:?}", connection.get_state());
     }
     if pending_response.accumulation_complete() {
@@ -90,6 +92,24 @@ pub fn process_incoming_frame(
     }
 
     packets
+}
+
+fn get_accumulator(phase: Phase) -> Box<dyn Accumulator> {
+    match phase {
+        Phase::Handshake => Box::from(HandshakeAccumulator::default()),
+        Phase::HandshakeResponse => Box::from(HandshakeResponseAccumulator::default()),
+        Phase::AuthInit => Box::from(AuthInitAccumulator::default()),
+        Phase::AuthSwitchRequest => Box::from(AuthSwitchRequestAccumulator::default()),
+        Phase::AuthSwitchResponse => Box::from(AuthSwitchResponseAccumulator::default()),
+        Phase::AuthFailed => {
+            panic!("Untracked state transition, no transmissions should occur after auth failure.");
+        }
+        Phase::AuthComplete => Box::from(AuthCompleteAccumulator::default()),
+        Phase::Command => {
+            todo!()
+        }
+        Phase::PendingResponse => Box::from(ResultSetAccumulator::default()),
+    }
 }
 
 pub fn process_outgoing_packets(
@@ -100,7 +120,7 @@ pub fn process_outgoing_packets(
     None
 }
 
-fn make_packets(buf: &[u8], connection: &Arc<Mutex<Connection>>) -> Vec<Packet> {
+fn make_packets(buf: &[u8], connection: Arc<Mutex<Connection>>) -> Vec<Packet> {
     let mut ret: Vec<Packet> = Vec::new();
 
     let mut offset: usize = 0;
@@ -110,7 +130,7 @@ fn make_packets(buf: &[u8], connection: &Arc<Mutex<Connection>>) -> Vec<Packet> 
             .lock()
             .expect("Connection lock failed when reading packet.");
 
-        let mut buffer_vec: Vec<u8> = connection.partial_bytes.clone().unwrap_or(Vec::new());
+        let mut buffer_vec: Vec<u8> = connection.partial_bytes.clone().unwrap_or_default();
         buffer_vec.extend_from_slice(buf);
 
         match parse_buffer(&buffer_vec, &mut offset, connection.phase.clone()) {
