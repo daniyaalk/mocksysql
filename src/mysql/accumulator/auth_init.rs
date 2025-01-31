@@ -1,7 +1,9 @@
 use crate::connection::{Connection, Phase};
+use crate::mysql::accumulator::auth_switch_request::AuthSwitchRequestAccumulator;
 use crate::mysql::accumulator::{auth_complete, Accumulator};
 use crate::mysql::packet::Packet;
 use auth_complete::AuthCompleteAccumulator;
+use std::any::Any;
 
 #[derive(Debug, Clone, Default)]
 pub struct AuthInitAccumulator {
@@ -13,7 +15,7 @@ impl Accumulator for AuthInitAccumulator {
         // https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_connection_phase_packets_protocol_auth_switch_request.html
         if packet.body[0] == 0xfe {
             self.accumulation_complete = true;
-            Phase::AuthSwitchRequest
+            AuthSwitchRequestAccumulator::default().consume(packet, connection)
         } else {
             // AuthSwitch is not required if the credentials sent in HandshakeResponse were sufficient.
             AuthCompleteAccumulator::default().consume(packet, connection)
@@ -21,6 +23,10 @@ impl Accumulator for AuthInitAccumulator {
     }
 
     fn accumulation_complete(&self) -> bool {
-        return self.accumulation_complete;
+        self.accumulation_complete
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }

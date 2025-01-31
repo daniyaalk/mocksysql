@@ -1,8 +1,6 @@
-use crate::mysql::command::Command;
 use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
-use crate::mysql::accumulator::result_set::ResultSetAccumulator;
-use std::cell::{Cell, RefCell};
-use std::rc::Rc;
+use crate::mysql::accumulator::result_set::ResponseAccumulator;
+use crate::mysql::command::Command;
 
 #[allow(dead_code)]
 #[derive(Default)]
@@ -13,7 +11,7 @@ pub struct Connection {
 
     pub handshake: Option<crate::mysql::accumulator::handshake::HandshakeAccumulator>,
     pub handshake_response: Option<HandshakeResponseAccumulator>,
-    pub result_set: ResultSetAccumulator,
+    query_response: ResponseAccumulator,
 }
 
 impl Connection {
@@ -29,8 +27,12 @@ impl Connection {
         self.handshake_response.as_ref()
     }
 
-    pub fn get_result_set(&mut self) -> &ResultSetAccumulator {
-        &mut self.result_set
+    pub fn get_response_accumulator(&self) -> ResponseAccumulator {
+        self.query_response.clone()
+    }
+
+    pub fn set_response_accumulator(&mut self, accumulator: ResponseAccumulator) {
+        self.query_response = accumulator;
     }
 }
 

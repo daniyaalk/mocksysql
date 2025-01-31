@@ -90,8 +90,10 @@ fn get_packet_type(body: &[u8], phase: Phase) -> PacketType {
     if body[0] == 0xff {
         return PacketType::Error;
     }
-    
-    if Phase::Command == phase {}
+
+    if Phase::Command == phase {
+        return PacketType::Command;
+    }
 
     PacketType::Other
 }

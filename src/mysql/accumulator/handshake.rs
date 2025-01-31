@@ -1,15 +1,16 @@
 use crate::connection::{Connection, Phase};
-use crate::mysql::packet::Packet;
-use crate::mysql::accumulator::Accumulator;
 use crate::mysql::accumulator::CapabilityFlags;
+use crate::mysql::accumulator::{AccumulationDelta, Accumulator};
+use crate::mysql::packet::Packet;
 use crate::mysql::types::{Converter, IntFixedLen, StringFixedLen, StringNullEnc};
+use std::any::Any;
 use std::cmp::max;
 
 const RESERVED_STRING: &str = "\0\0\0\0\0\0\0\0\0\0";
 const PLUGIN_DATA_MAX_LENGTH: u8 = 21;
 
 /// https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_connection_phase_packets_protocol_handshake_v10.html
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct HandshakeAccumulator {
     accumulation_complete: bool,
     protocol_version: u8,
@@ -154,6 +155,17 @@ impl Accumulator for HandshakeAccumulator {
     fn accumulation_complete(&self) -> bool {
         self.accumulation_complete
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_accumulation_delta(&self) -> Option<AccumulationDelta> {
+        Some(AccumulationDelta {
+            handshake: Some(self.clone()),
+            ..AccumulationDelta::default()
+        })
+    }
 }
 
 enum StatusFlags {
@@ -164,9 +176,9 @@ enum StatusFlags {
 #[cfg(test)]
 mod tests {
     use crate::connection::{Connection, Phase};
-    use crate::mysql::packet::Packet;
     use crate::mysql::accumulator::handshake::HandshakeAccumulator;
     use crate::mysql::accumulator::Accumulator;
+    use crate::mysql::packet::Packet;
 
     #[test]
     fn test_handshake() {

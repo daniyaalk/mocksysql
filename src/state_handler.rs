@@ -1,11 +1,11 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use util::packet_printer;
 
 use crate::mysql::accumulator::auth_complete::AuthCompleteAccumulator;
 use crate::mysql::accumulator::auth_init::AuthInitAccumulator;
-use crate::mysql::accumulator::auth_switch_request::AuthSwitchRequestAccumulator;
 use crate::mysql::accumulator::auth_switch_response::AuthSwitchResponseAccumulator;
-use crate::mysql::accumulator::result_set::ResultSetAccumulator;
+use crate::mysql::accumulator::command::CommandAccumulator;
+use crate::mysql::accumulator::result_set::ResponseAccumulator;
 use crate::mysql::accumulator::Accumulator;
 use crate::mysql::accumulator::{
     handshake::HandshakeAccumulator, handshake_response::HandshakeResponseAccumulator,
@@ -28,87 +28,66 @@ pub fn process_incoming_frame(
     #[allow(unused_variables)] direction: &Direction,
 ) -> Vec<Packet> {
     let packets = make_packets(buf, connection.clone());
-    let mut pending_response = ResultSetAccumulator::default();
 
     for packet in &packets {
         let mut connection = connection
             .try_lock()
             .expect("Transmission race condition / lock failed.");
-        // get_accumulator()
-        match &connection.get_state().clone() {
-            Phase::Handshake => {
-                let mut handshake = HandshakeAccumulator::default();
-                connection.phase = handshake.consume(packet, &connection);
-                connection.handshake = Some(handshake);
-            }
-            Phase::HandshakeResponse => {
-                let mut handshake_response = HandshakeResponseAccumulator::default();
-                connection.phase = handshake_response.consume(packet, &connection);
-                connection.handshake_response = Some(handshake_response);
-            }
-            Phase::AuthInit => {
-                if packet.body[0] == 0xfe {
-                    // AuthSwitchRequest
-                    connection.phase = Phase::AuthSwitchRequest;
-                    let mut auth_switch_request = AuthSwitchRequestAccumulator::default();
-                    connection.phase = auth_switch_request.consume(packet, &connection);
-                } else {
-                    // AuthComplete
-                }
-            }
-            Phase::AuthSwitchRequest => {
-                // AuthSwitchRequest is not intended to be transitioned into organically,
-                // it should be inferred by 0xfe packet after HandshakeResponse
-                panic!("Untracked state transition");
-            }
-            Phase::AuthSwitchResponse => {
-                let mut auth_switch_response = AuthSwitchResponseAccumulator::default();
-                connection.phase = auth_switch_response.consume(packet, &connection);
-            }
-            Phase::AuthComplete => {
-                let mut auth_complete_accumulation = AuthCompleteAccumulator::default();
-                connection.phase = auth_complete_accumulation.consume(packet, &connection);
-            }
-            Phase::AuthFailed => {
-                panic!(
-                    "Untracked state transition, no transmissions should occur after auth failure."
-                );
-            }
-            Phase::Command => {
-                println!("Entered command phase!");
-                connection.phase = Phase::PendingResponse;
-                connection.last_command =
-                    Some(crate::mysql::command::Command::from_bytes(&packet.body));
-            }
-            Phase::PendingResponse => {
-                connection.phase = pending_response.consume(packet, &connection);
-            }
-        }
+
+        let mut accumulator = get_accumulator(
+            connection.phase.clone(),
+            connection.get_response_accumulator(),
+        );
+
+        packet_printer::print_packet(packet);
+        connection.phase = accumulator.consume(packet, &connection);
+
+        sync_connection_state(&mut connection, accumulator);
 
         println!("{:?}", connection.get_state());
-    }
-    if pending_response.accumulation_complete() {
-        println!("{:?}", pending_response);
     }
 
     packets
 }
 
-fn get_accumulator(phase: Phase) -> Box<dyn Accumulator> {
+fn sync_connection_state(
+    connection: &mut MutexGuard<Connection>,
+    accumulator: Box<dyn Accumulator>,
+) {
+    if accumulator.get_accumulation_delta().is_some() {
+        let delta = accumulator.get_accumulation_delta().unwrap();
+
+        if delta.handshake.is_some() {
+            connection.handshake = delta.handshake
+        }
+        if delta.handshake_response.is_some() {
+            connection.handshake_response = delta.handshake_response
+        }
+        if delta.last_command.is_some() {
+            connection.last_command = delta.last_command
+        }
+        if delta.response.is_some() {
+            connection.set_response_accumulator(delta.response.unwrap());
+        }
+    }
+}
+
+fn get_accumulator(
+    phase: Phase,
+    response_accumulator: ResponseAccumulator,
+) -> Box<dyn Accumulator> {
     match phase {
         Phase::Handshake => Box::from(HandshakeAccumulator::default()),
         Phase::HandshakeResponse => Box::from(HandshakeResponseAccumulator::default()),
         Phase::AuthInit => Box::from(AuthInitAccumulator::default()),
-        Phase::AuthSwitchRequest => Box::from(AuthSwitchRequestAccumulator::default()),
+        Phase::AuthSwitchRequest => panic!("Auth switch request should be transitioned into via the accumulator for AuthInit, not by packet processing loop."),
         Phase::AuthSwitchResponse => Box::from(AuthSwitchResponseAccumulator::default()),
         Phase::AuthFailed => {
             panic!("Untracked state transition, no transmissions should occur after auth failure.");
         }
         Phase::AuthComplete => Box::from(AuthCompleteAccumulator::default()),
-        Phase::Command => {
-            todo!()
-        }
-        Phase::PendingResponse => Box::from(ResultSetAccumulator::default()),
+        Phase::Command => Box::from(CommandAccumulator::default()),
+        Phase::PendingResponse => Box::from(response_accumulator), // yuck!
     }
 }
 
@@ -187,7 +166,6 @@ fn parse_buffer(buf: &Vec<u8>, start_offset: &mut usize, phase: Phase) -> Packet
     *start_offset = offset + 4 + header.size as usize;
 
     let packet = packet.unwrap();
-    packet_printer::print_packet(&packet);
 
     PacketParseResult::Packet(packet)
 }

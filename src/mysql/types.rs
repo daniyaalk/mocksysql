@@ -79,12 +79,12 @@ impl Converter<String> for StringLenEnc {
         let length = IntLenEnc::from_bytes(bytes, None);
         let mut result: String = "".to_string();
         let offset = length.offset_increment;
-        for i in offset..offset + length.result as usize {
+        for i in offset..offset + (length.result as usize) {
             result.push(bytes[i] as char);
         }
 
         DecodeResult {
-            offset_increment: length.offset_increment + result.len(),
+            offset_increment: length.offset_increment + (length.result as usize),
             result,
         }
     }

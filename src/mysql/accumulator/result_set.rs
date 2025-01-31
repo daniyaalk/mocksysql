@@ -1,12 +1,12 @@
 use crate::connection::{Connection, Phase};
+use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags};
 use crate::mysql::command::MySqlCommand;
 use crate::mysql::packet::{Packet, PacketType};
-use crate::mysql::accumulator::{Accumulator, CapabilityFlags};
 use crate::mysql::types::{Converter, IntLenEnc, StringLenEnc};
-use std::rc::Rc;
+use std::any::Any;
 
 #[derive(Debug, Default, Clone)]
-pub struct ResultSetAccumulator {
+pub struct ResponseAccumulator {
     state: State,
     metadata_follows: bool,
     columns: Vec<ColumnDefinition>,
@@ -17,16 +17,16 @@ pub struct ResultSetAccumulator {
     accumulation_complete: bool,
 }
 
-impl Accumulator for ResultSetAccumulator {
+impl Accumulator for ResponseAccumulator {
     fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
         let mut next_phase = connection.phase.clone();
 
+        if connection.get_last_command().is_none() {
+            panic!("Attempt to populate Result")
+        }
         match self.state {
             State::Initiated => {
-                if connection.get_last_command().is_some()
-                    && connection.get_last_command().unwrap().com_code == MySqlCommand::ComQuery
-                {
-                    self.metadata_follows = true;
+                if connection.get_last_command().unwrap().com_code == MySqlCommand::ComQuery {
                     if connection.get_handshake_response().unwrap().client_flag
                         & CapabilityFlags::ClientOptionalResultSetMetadata as u32
                         != 0
@@ -50,6 +50,9 @@ impl Accumulator for ResultSetAccumulator {
             State::ColumnCount => {
                 self.column_count = IntLenEnc::from_bytes(&packet.body, None).result as usize;
                 self.state = State::HydrateColumns;
+                if !self.metadata_follows {
+                    self.state = State::ColumnsHydrated;
+                }
             }
             State::HydrateColumns => {
                 self.columns.push(ColumnDefinition::from_packet(packet));
@@ -66,7 +69,7 @@ impl Accumulator for ResultSetAccumulator {
                     self.state = State::HydrateRows;
                 } else {
                     self.state = State::HydrateRows;
-                    next_phase = self.consume(&packet, connection);
+                    next_phase = self.consume(packet, connection);
                 }
             }
             State::HydrateRows => {
@@ -86,6 +89,17 @@ impl Accumulator for ResultSetAccumulator {
 
     fn accumulation_complete(&self) -> bool {
         true
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_accumulation_delta(&self) -> Option<AccumulationDelta> {
+        Some(AccumulationDelta {
+            response: Some(self.clone()), // yuck
+            ..AccumulationDelta::default()
+        })
     }
 }
 
@@ -172,7 +186,6 @@ enum FieldTypes {}
 mod tests {
     use crate::connection::Phase;
     use crate::mysql::accumulator::result_set::*;
-    use std::cell::RefCell;
 
     #[test]
     fn test_column_definition_decode() {

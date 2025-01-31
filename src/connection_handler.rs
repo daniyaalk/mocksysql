@@ -2,7 +2,8 @@ use std::{
     io::{Error, Read, Write},
     net::{SocketAddr, TcpStream},
     sync::{Arc, Mutex},
-    thread,
+    thread
+    ,
 };
 
 use crate::mysql::command::MySqlCommand;
