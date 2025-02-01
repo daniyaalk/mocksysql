@@ -1,5 +1,5 @@
-use std::cell::Cell;
-use crate::connection::Phase::Auth;
+use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
+use crate::mysql::accumulator::result_set::ResponseAccumulator;
 use crate::mysql::command::Command;
 
 #[allow(dead_code)]
@@ -7,8 +7,11 @@ use crate::mysql::command::Command;
 pub struct Connection {
     pub phase: Phase,
     pub partial_bytes: Option<Vec<u8>>,
-    pub partial_result_set: Option<crate::mysql::result_set::ResultSet>,
     pub last_command: Option<Command>,
+
+    pub handshake: Option<crate::mysql::accumulator::handshake::HandshakeAccumulator>,
+    pub handshake_response: Option<HandshakeResponseAccumulator>,
+    query_response: ResponseAccumulator,
 }
 
 impl Connection {
@@ -16,8 +19,20 @@ impl Connection {
         &self.phase
     }
 
-    pub fn mark_auth_done(&mut self) {
-        self.phase = Phase::Command
+    pub fn get_last_command(&self) -> Option<&Command> {
+        self.last_command.as_ref()
+    }
+
+    pub fn get_handshake_response(&self) -> Option<&HandshakeResponseAccumulator> {
+        self.handshake_response.as_ref()
+    }
+
+    pub fn get_response_accumulator(&self) -> ResponseAccumulator {
+        self.query_response.clone()
+    }
+
+    pub fn set_response_accumulator(&mut self, accumulator: ResponseAccumulator) {
+        self.query_response = accumulator;
     }
 }
 
@@ -33,18 +48,19 @@ impl Connection {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Default, PartialEq)]
+#[repr(u8)]
 pub enum Phase {
-    Auth,
+    #[default]
+    Handshake,
+    HandshakeResponse,
+    AuthInit,
+    AuthSwitchResponse,
+    AuthFailed,
+    AuthComplete,
     Command,
     #[allow(dead_code)]
     PendingResponse,
-}
-
-impl Default for Phase {
-    fn default() -> Phase {
-        Auth
-    }
 }
 
 #[derive(Debug, PartialEq)]

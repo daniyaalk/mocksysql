@@ -1,17 +1,16 @@
 use std::{
-    env,
     io::{Error, Read, Write},
     net::{SocketAddr, TcpStream},
     sync::{Arc, Mutex},
     thread,
 };
 
+use crate::mysql::command::MySqlCommand;
+use crate::mysql::packet::PacketType;
 use crate::{
     connection::{Connection, Direction},
     state_handler,
 };
-use crate::mysql::command::{Command, MySqlCommand};
-use crate::mysql::packet::PacketType;
 
 fn exchange(
     mut from: TcpStream,
@@ -38,16 +37,22 @@ fn exchange(
             for packet in packets {
                 if packet.p_type.eq(&PacketType::Command)
                     && last_command.is_some()
-                    && last_command.as_ref().unwrap().com_code.eq(&MySqlCommand::ComQuery)
-                    && last_command.as_ref().unwrap().arg.to_lowercase().starts_with("insert")
+                    && last_command
+                        .as_ref()
+                        .unwrap()
+                        .com_code
+                        .eq(&MySqlCommand::ComQuery)
+                    && last_command
+                        .as_ref()
+                        .unwrap()
+                        .arg
+                        .to_lowercase()
+                        .starts_with("insert")
                 {
                     panic!()
                 }
             }
         }
-
-
-        let x = &mut buf;
 
         to.write_all(&buf[..read_bytes])?;
     }

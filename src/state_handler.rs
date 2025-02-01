@@ -1,8 +1,15 @@
-use std::cell::Cell;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use util::packet_printer;
 
-use crate::mysql::packet::PacketType;
+use crate::mysql::accumulator::auth_complete::AuthCompleteAccumulator;
+use crate::mysql::accumulator::auth_init::AuthInitAccumulator;
+use crate::mysql::accumulator::auth_switch_response::AuthSwitchResponseAccumulator;
+use crate::mysql::accumulator::command::CommandAccumulator;
+use crate::mysql::accumulator::result_set::ResponseAccumulator;
+use crate::mysql::accumulator::Accumulator;
+use crate::mysql::accumulator::{
+    handshake::HandshakeAccumulator, handshake_response::HandshakeResponseAccumulator,
+};
 use crate::{
     connection::{Connection, Direction, Phase},
     mysql::packet::Packet,
@@ -20,46 +27,70 @@ pub fn process_incoming_frame(
     connection: &Arc<Mutex<Connection>>,
     #[allow(unused_variables)] direction: &Direction,
 ) -> Vec<Packet> {
-    let packets = make_packets(buf, &mut connection.clone());
+    let packets = make_packets(buf, connection.clone());
 
     for packet in &packets {
         let mut connection = connection
             .try_lock()
             .expect("Transmission race condition / lock failed.");
-        match &connection.get_state() {
-            Phase::Auth => {
-                if packet.is_ok().is_some() {
-                    connection.mark_auth_done();
-                    println!("Auth Done!")
-                }
-            }
-            Phase::Command => {
-                connection.phase = Phase::PendingResponse;
-                connection.last_command =
-                    Some(crate::mysql::command::Command::from_bytes(&packet.body));
-            }
-            Phase::PendingResponse => match packet.p_type {
-                PacketType::Eof => connection.phase = Phase::Command,
-                PacketType::Error => connection.phase = Phase::Command,
-                PacketType::Ok => connection.phase = Phase::Command,
-                _ => (),
-            },
-            _ => (),
-        }
+
+        let mut accumulator = get_accumulator(
+            connection.phase.clone(),
+            connection.get_response_accumulator(),
+        );
+
+        packet_printer::print_packet(packet);
+        connection.phase = accumulator.consume(packet, &connection);
+
+        sync_connection_state(&mut connection, accumulator);
+
+        println!("{:?}", connection.get_state());
     }
 
     packets
 }
 
-pub fn process_outgoing_packets(
-    packets: Vec<Packet>,
-    connection: Arc<Mutex<Connection>>,
-    direction: Direction,
-) -> Option<Vec<u8>> {
-    None
+fn sync_connection_state(
+    connection: &mut MutexGuard<Connection>,
+    accumulator: Box<dyn Accumulator>,
+) {
+    if accumulator.get_accumulation_delta().is_some() {
+        let delta = accumulator.get_accumulation_delta().unwrap();
+
+        if delta.handshake.is_some() {
+            connection.handshake = delta.handshake
+        }
+        if delta.handshake_response.is_some() {
+            connection.handshake_response = delta.handshake_response
+        }
+        if delta.last_command.is_some() {
+            connection.last_command = delta.last_command
+        }
+        if delta.response.is_some() {
+            connection.set_response_accumulator(delta.response.unwrap());
+        }
+    }
 }
 
-fn make_packets(buf: &[u8], connection: &Arc<Mutex<Connection>>) -> Vec<Packet> {
+fn get_accumulator(
+    phase: Phase,
+    response_accumulator: ResponseAccumulator,
+) -> Box<dyn Accumulator> {
+    match phase {
+        Phase::Handshake => Box::from(HandshakeAccumulator::default()),
+        Phase::HandshakeResponse => Box::from(HandshakeResponseAccumulator::default()),
+        Phase::AuthInit => Box::from(AuthInitAccumulator::default()),
+        Phase::AuthSwitchResponse => Box::from(AuthSwitchResponseAccumulator::default()),
+        Phase::AuthFailed => {
+            panic!("Untracked state transition, no transmissions should occur after auth failure.");
+        }
+        Phase::AuthComplete => Box::from(AuthCompleteAccumulator::default()),
+        Phase::Command => Box::from(CommandAccumulator::default()),
+        Phase::PendingResponse => Box::from(response_accumulator), // yuck!
+    }
+}
+
+fn make_packets(buf: &[u8], connection: Arc<Mutex<Connection>>) -> Vec<Packet> {
     let mut ret: Vec<Packet> = Vec::new();
 
     let mut offset: usize = 0;
@@ -69,7 +100,7 @@ fn make_packets(buf: &[u8], connection: &Arc<Mutex<Connection>>) -> Vec<Packet> 
             .lock()
             .expect("Connection lock failed when reading packet.");
 
-        let mut buffer_vec: Vec<u8> = connection.partial_bytes.clone().unwrap_or(Vec::new());
+        let mut buffer_vec: Vec<u8> = connection.partial_bytes.clone().unwrap_or_default();
         buffer_vec.extend_from_slice(buf);
 
         match parse_buffer(&buffer_vec, &mut offset, connection.phase.clone()) {
@@ -126,7 +157,6 @@ fn parse_buffer(buf: &Vec<u8>, start_offset: &mut usize, phase: Phase) -> Packet
     *start_offset = offset + 4 + header.size as usize;
 
     let packet = packet.unwrap();
-    packet_printer::print_packet(&packet);
 
     PacketParseResult::Packet(packet)
 }

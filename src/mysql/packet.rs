@@ -8,14 +8,13 @@ pub struct Packet {
     pub p_type: PacketType,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum PacketType {
     Other,
     Command,
     Ok,
     Eof,
     Error,
-    PartialResultSet,
 }
 
 #[derive(Debug)]
@@ -58,7 +57,7 @@ impl Packet {
         }
         let body = bytes[4..4 + header.size].to_vec();
 
-        let p_type: PacketType = get_packet_type(phase, &body);
+        let p_type: PacketType = get_packet_type(&body, phase);
 
         Ok(Packet {
             header,
@@ -77,38 +76,30 @@ impl Packet {
     }
 }
 
-fn get_packet_type(phase: Phase, body: &[u8]) -> PacketType {
-    match phase {
-        Phase::Auth => PacketType::Other,
-        Phase::Command => PacketType::Command,
-        Phase::PendingResponse => match body[0] {
-            0xff => PacketType::Error,
-            0x00 => PacketType::Ok,
-            0xfe => {
-                if body.len() > 8 {
-                    PacketType::PartialResultSet
-                } else {
-                    PacketType::Eof
-                }
-            }
-            _ => PacketType::PartialResultSet,
-        },
+fn get_packet_type(body: &[u8], phase: Phase) -> PacketType {
+    // TODO: Look into this, the mysql documentation suggests a packet size of 7 and 9 respectively.
+    if body.len() >= 7 && body[0] == 0x00 {
+        return PacketType::Ok;
     }
+
+    if body.len() <= 9 && body[0] == 0xfe {
+        return PacketType::Eof;
+    }
+
+    if body[0] == 0xff {
+        return PacketType::Error;
+    }
+
+    if Phase::Command == phase {
+        return PacketType::Command;
+    }
+
+    PacketType::Other
 }
 
 impl Packet {
-    pub fn is_ok(&self) -> Option<OkData> {
-        if self.body[0] == 0x00 {
-            return Some(OkData {
-                rows_len: 0,
-                id: 0,
-                server_status: [0; 2],
-                warning_count: [0; 2],
-                message: Vec::new(),
-            });
-        }
-
-        None
+    pub fn get_packet_type(&self) -> PacketType {
+        self.p_type.clone() // TODO: Change this to a Cell
     }
 }
 

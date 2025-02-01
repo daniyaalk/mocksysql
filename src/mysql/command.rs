@@ -1,5 +1,5 @@
 #[allow(dead_code)]
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Command {
     pub com_code: MySqlCommand,
     pub arg: String,
@@ -9,9 +9,11 @@ impl Command {
     pub fn from_bytes(bytes: &[u8]) -> Command {
         let com_code = MySqlCommand::from_byte(bytes[0]).unwrap();
 
-        Command{ com_code, arg: String::from_utf8(bytes[1..].to_vec()).unwrap() }
+        Command {
+            com_code,
+            arg: String::from_utf8(bytes[1..].to_vec()).unwrap(),
+        }
     }
-
 }
 
 #[allow(dead_code)]
