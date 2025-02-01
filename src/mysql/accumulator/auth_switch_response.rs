@@ -10,7 +10,7 @@ pub struct AuthSwitchResponseAccumulator {
 }
 
 impl Accumulator for AuthSwitchResponseAccumulator {
-    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
+    fn consume(&mut self, packet: &Packet, _connection: &Connection) -> Phase {
         let data = packet.body.to_vec();
 
         self.accumulation_complete = true;

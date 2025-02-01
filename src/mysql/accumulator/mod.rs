@@ -13,6 +13,7 @@ pub mod result_set;
 
 #[repr(u32)]
 pub enum CapabilityFlags {
+    #[allow(dead_code)]
     ClientLongPassword = 0x01,
     ClientConnectWithDB = 0x08,
     ClientProtocol41 = 0x01 << 9,

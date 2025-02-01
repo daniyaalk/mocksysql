@@ -30,7 +30,7 @@ pub struct HandshakeAccumulator {
 }
 
 impl Accumulator for HandshakeAccumulator {
-    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
+    fn consume(&mut self, packet: &Packet, _connection: &Connection) -> Phase {
         let mut offset: usize = 0;
 
         let protocol_version = {
@@ -168,11 +168,6 @@ impl Accumulator for HandshakeAccumulator {
     }
 }
 
-enum StatusFlags {
-    ClientLongPassword = 0x01,
-    ClientFoundRows = 0x02,
-}
-
 #[cfg(test)]
 mod tests {
     use crate::connection::{Connection, Phase};
@@ -191,7 +186,7 @@ mod tests {
                 0x63, 0x61, 0x63, 0x68, 0x69, 0x6e, 0x67, 0x5f, 0x73, 0x68, 0x61, 0x32, 0x5f, 0x70,
                 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x00,
             ],
-            Phase::AuthSwitchRequest,
+            Phase::AuthInit,
         )
         .unwrap();
         let connection = Connection::default();

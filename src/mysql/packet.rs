@@ -15,7 +15,6 @@ pub enum PacketType {
     Ok,
     Eof,
     Error,
-    PartialResponse,
 }
 
 #[derive(Debug)]
@@ -99,20 +98,6 @@ fn get_packet_type(body: &[u8], phase: Phase) -> PacketType {
 }
 
 impl Packet {
-    pub fn is_ok(&self) -> Option<OkData> {
-        if self.body[0] == 0x00 {
-            return Some(OkData {
-                rows_len: 0,
-                id: 0,
-                server_status: [0; 2],
-                warning_count: [0; 2],
-                message: Vec::new(),
-            });
-        }
-
-        None
-    }
-
     pub fn get_packet_type(&self) -> PacketType {
         self.p_type.clone() // TODO: Change this to a Cell
     }

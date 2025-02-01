@@ -55,7 +55,6 @@ pub enum Phase {
     Handshake,
     HandshakeResponse,
     AuthInit,
-    AuthSwitchRequest,
     AuthSwitchResponse,
     AuthFailed,
     AuthComplete,

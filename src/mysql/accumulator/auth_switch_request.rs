@@ -13,7 +13,7 @@ pub struct AuthSwitchRequestAccumulator {
 }
 
 impl Accumulator for AuthSwitchRequestAccumulator {
-    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
+    fn consume(&mut self, packet: &Packet, _connection: &Connection) -> Phase {
         let mut offset: usize = 0;
 
         let status_tag = {
@@ -34,6 +34,8 @@ impl Accumulator for AuthSwitchRequestAccumulator {
             offset += result.offset_increment;
             result.result
         };
+
+        assert_eq!(offset, packet.body.len());
 
         self.accumulation_complete = true;
         self.status_tag = status_tag;

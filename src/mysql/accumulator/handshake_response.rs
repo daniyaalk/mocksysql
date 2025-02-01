@@ -5,7 +5,6 @@ use crate::mysql::types::{
     Converter, IntFixedLen, IntLenEnc, StringFixedLen, StringLenEnc, StringNullEnc,
 };
 use std::any::Any;
-use std::borrow::ToOwned;
 use std::collections::HashMap;
 
 const FILLER: &str = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
@@ -30,7 +29,7 @@ pub struct HandshakeResponseAccumulator {
 }
 
 impl Accumulator for HandshakeResponseAccumulator {
-    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
+    fn consume(&mut self, packet: &Packet, _connection: &Connection) -> Phase {
         let mut offset: usize = 0;
 
         let client_flag = {

@@ -80,7 +80,6 @@ fn get_accumulator(
         Phase::Handshake => Box::from(HandshakeAccumulator::default()),
         Phase::HandshakeResponse => Box::from(HandshakeResponseAccumulator::default()),
         Phase::AuthInit => Box::from(AuthInitAccumulator::default()),
-        Phase::AuthSwitchRequest => panic!("Auth switch request should be transitioned into via the accumulator for AuthInit, not by packet processing loop."),
         Phase::AuthSwitchResponse => Box::from(AuthSwitchResponseAccumulator::default()),
         Phase::AuthFailed => {
             panic!("Untracked state transition, no transmissions should occur after auth failure.");
@@ -89,14 +88,6 @@ fn get_accumulator(
         Phase::Command => Box::from(CommandAccumulator::default()),
         Phase::PendingResponse => Box::from(response_accumulator), // yuck!
     }
-}
-
-pub fn process_outgoing_packets(
-    packets: Vec<Packet>,
-    connection: Arc<Mutex<Connection>>,
-    direction: Direction,
-) -> Option<Vec<u8>> {
-    None
 }
 
 fn make_packets(buf: &[u8], connection: Arc<Mutex<Connection>>) -> Vec<Packet> {

@@ -10,7 +10,9 @@ pub struct ResponseAccumulator {
     state: State,
     metadata_follows: bool,
     columns: Vec<ColumnDefinition>,
+    #[allow(dead_code)]
     rows: Vec<Vec<String>>,
+    #[allow(dead_code)]
     row_count: usize,
     status: Option<PacketType>,
     column_count: usize,
@@ -116,6 +118,7 @@ enum State {
 }
 
 #[derive(Debug, Default, Clone)]
+#[allow(dead_code)]
 struct ColumnDefinition {
     catalog: String,
     schema: String,
@@ -125,7 +128,7 @@ struct ColumnDefinition {
     org_name: String,
     fixed_length_fields: u64,
     character_set: u8,
-    // type_: FieldTypes,
+    // field_type: FieldTypes,
     // decimals: Decimals
 }
 
@@ -171,16 +174,53 @@ impl ColumnDefinition {
                 offset += result.offset_increment;
                 result.result
             },
-            character_set: 0x00, // TODO
+            character_set: {
+                // assert_eq!(offset, packet.body.len() - 3);
+                0x00
+            }, // TODO
         }
     }
 }
 
 #[derive(Debug)]
-enum Decimals {}
-
-#[derive(Debug)]
-enum FieldTypes {}
+#[allow(dead_code)]
+enum FieldTypes {
+    MysqlTypeDecimal,
+    MysqlTypeTiny,
+    MysqlTypeShort,
+    MysqlTypeLong,
+    MysqlTypeFloat,
+    MysqlTypeDouble,
+    MysqlTypeNull,
+    MysqlTypeTimestamp,
+    MysqlTypeLongLong,
+    MysqlTypeInt24,
+    MysqlTypeDate,
+    MysqlTypeTime,
+    MysqlTypeDatetime,
+    MysqlTypeYear,
+    MysqlTypeNewDate,
+    MysqlTypeVarchar,
+    MysqlTypeBit,
+    MysqlTypeTimestamp2,
+    MysqlTypeDatetime2,
+    MysqlTypeTime2,
+    MysqlTypeTypedArray,
+    MysqlTypeVector,
+    MysqlTypeInvalid,
+    MysqlTypeBool,
+    MysqlTypeJson,
+    MysqlTypeNewDecimal,
+    MysqlTypeEnum,
+    MysqlTypeSet,
+    MysqlTypeTinyBlob,
+    MysqlTypeMediumBlob,
+    MysqlTypeLongBlob,
+    MysqlTypeBlob,
+    MysqlTypeVarString,
+    MysqlTypeString,
+    MysqlTypeGeometry,
+}
 
 #[cfg(test)]
 mod tests {
