@@ -2,7 +2,7 @@ use crate::connection::{Connection, Phase};
 use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags};
 use crate::mysql::command::MySqlCommand;
 use crate::mysql::packet::{Packet, PacketType};
-use crate::mysql::types::{Converter, IntLenEnc, StringLenEnc};
+use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringLenEnc};
 use std::any::Any;
 
 #[derive(Debug, Default, Clone)]
@@ -127,9 +127,12 @@ struct ColumnDefinition {
     name: String,
     org_name: String,
     fixed_length_fields: u64,
-    character_set: u8,
-    // field_type: FieldTypes,
-    // decimals: Decimals
+    character_set: u16,
+    column_length: u32,
+    field_type: FieldTypes,
+    flags: u16,
+    decimals: u8,
+    reserved: u16,
 }
 
 impl ColumnDefinition {
@@ -176,14 +179,44 @@ impl ColumnDefinition {
             },
             character_set: {
                 // assert_eq!(offset, packet.body.len() - 3);
-                0x00
+                let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
+                offset += result.offset_increment;
+                result.result as u16
             }, // TODO
+            column_length: {
+                let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(4));
+                offset += result.offset_increment;
+                result.result as u32
+            },
+            field_type: {
+                let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(1));
+                offset += result.offset_increment;
+                FieldTypes::try_from(result.result as u16)
+                    .expect("Invalid column type encountered!")
+            },
+            flags: {
+                let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
+                offset += result.offset_increment;
+                result.result as u16
+            },
+            decimals: {
+                let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(1));
+                offset += result.offset_increment;
+                result.result as u8
+            },
+            reserved: {
+                let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
+                offset += result.offset_increment;
+                assert_eq!(offset, body.len());
+                result.result as u16
+            },
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 #[allow(dead_code)]
+#[repr(u8)]
 enum FieldTypes {
     MysqlTypeDecimal,
     MysqlTypeTiny,
@@ -218,8 +251,54 @@ enum FieldTypes {
     MysqlTypeLongBlob,
     MysqlTypeBlob,
     MysqlTypeVarString,
+    #[default]
     MysqlTypeString,
     MysqlTypeGeometry,
+}
+
+impl TryFrom<u16> for FieldTypes {
+    type Error = String;
+
+    fn try_from(value: u16) -> Result<FieldTypes, Self::Error> {
+        match value {
+            0 => Ok(FieldTypes::MysqlTypeDecimal),
+            1 => Ok(FieldTypes::MysqlTypeTiny),
+            2 => Ok(FieldTypes::MysqlTypeShort),
+            3 => Ok(FieldTypes::MysqlTypeLong),
+            4 => Ok(FieldTypes::MysqlTypeFloat),
+            5 => Ok(FieldTypes::MysqlTypeDouble),
+            6 => Ok(FieldTypes::MysqlTypeNull),
+            7 => Ok(FieldTypes::MysqlTypeTimestamp),
+            8 => Ok(FieldTypes::MysqlTypeLongLong),
+            9 => Ok(FieldTypes::MysqlTypeInt24),
+            10 => Ok(FieldTypes::MysqlTypeDate),
+            11 => Ok(FieldTypes::MysqlTypeTime),
+            12 => Ok(FieldTypes::MysqlTypeDatetime),
+            13 => Ok(FieldTypes::MysqlTypeYear),
+            14 => Ok(FieldTypes::MysqlTypeNewDate),
+            15 => Ok(FieldTypes::MysqlTypeVarchar),
+            16 => Ok(FieldTypes::MysqlTypeBit),
+            17 => Ok(FieldTypes::MysqlTypeTimestamp2),
+            18 => Ok(FieldTypes::MysqlTypeDatetime2),
+            19 => Ok(FieldTypes::MysqlTypeTime2),
+            20 => Ok(FieldTypes::MysqlTypeTypedArray),
+            21 => Ok(FieldTypes::MysqlTypeVector),
+            22 => Ok(FieldTypes::MysqlTypeInvalid),
+            23 => Ok(FieldTypes::MysqlTypeBool),
+            24 => Ok(FieldTypes::MysqlTypeJson),
+            25 => Ok(FieldTypes::MysqlTypeNewDecimal),
+            26 => Ok(FieldTypes::MysqlTypeEnum),
+            27 => Ok(FieldTypes::MysqlTypeSet),
+            28 => Ok(FieldTypes::MysqlTypeTinyBlob),
+            29 => Ok(FieldTypes::MysqlTypeMediumBlob),
+            30 => Ok(FieldTypes::MysqlTypeLongBlob),
+            31 => Ok(FieldTypes::MysqlTypeBlob),
+            32 => Ok(FieldTypes::MysqlTypeVarString),
+            33 => Ok(FieldTypes::MysqlTypeString),
+            34 => Ok(FieldTypes::MysqlTypeGeometry),
+            _ => Err(format!("Invalid MySQL type value: {}", value)),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -243,6 +322,7 @@ mod tests {
             Phase::PendingResponse,
         )
         .unwrap();
-        println!("{:?}", ColumnDefinition::from_packet(&packet));
+        let c_def = ColumnDefinition::from_packet(&packet);
+        println!("{:?}", c_def);
     }
 }
