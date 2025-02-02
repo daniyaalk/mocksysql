@@ -1,7 +1,7 @@
 use crate::connection::{Connection, Phase};
 use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags};
 use crate::mysql::command::MySqlCommand;
-use crate::mysql::packet::{Packet, PacketType};
+use crate::mysql::packet::{ErrorPacket, Packet, PacketType};
 use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringLenEnc};
 use std::any::Any;
 
@@ -17,6 +17,7 @@ pub struct ResponseAccumulator {
     status: Option<PacketType>,
     column_count: usize,
     accumulation_complete: bool,
+    error: Option<ErrorPacket>,
 }
 
 impl Accumulator for ResponseAccumulator {
@@ -26,6 +27,12 @@ impl Accumulator for ResponseAccumulator {
         if connection.get_last_command().is_none() {
             panic!("Attempt to populate Result")
         }
+
+        if packet.p_type == PacketType::Error {
+            self.state = State::Complete;
+            self.error = Some(ErrorPacket::from_packet(packet, connection));
+        }
+
         match self.state {
             State::Initiated => {
                 if connection.get_last_command().unwrap().com_code == MySqlCommand::ComQuery {

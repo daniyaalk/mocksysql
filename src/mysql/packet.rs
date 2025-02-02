@@ -1,4 +1,6 @@
-use crate::connection::Phase;
+use crate::connection::{Connection, Phase};
+use crate::mysql::accumulator::CapabilityFlags;
+use crate::mysql::types::{Converter, IntFixedLen, StringEOFEnc, StringFixedLen};
 use std::{fmt::Error, usize};
 
 #[derive(Debug)]
@@ -101,6 +103,71 @@ impl Packet {
     pub fn get_packet_type(&self) -> PacketType {
         self.p_type.clone() // TODO: Change this to a Cell
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct ErrorPacket {
+    pub error_code: u16,
+    pub sql_state: Option<SQLState>,
+    pub error_message: String,
+}
+
+impl ErrorPacket {
+    pub fn from_packet(packet: &Packet, connection: &Connection) -> ErrorPacket {
+        assert_eq!(packet.p_type, PacketType::Error);
+        let body = &packet.body;
+
+        let mut offset = 0;
+
+        ErrorPacket {
+            error_code: {
+                let result = IntFixedLen::from_bytes(body, Some(2));
+                offset += result.offset_increment;
+                result.result as u16
+            },
+            sql_state: {
+                let sql_state = get_sql_state(packet, connection, &offset);
+                offset += 6;
+                sql_state
+            },
+            error_message: {
+                let result = StringEOFEnc::from_bytes(&body[offset..].to_vec(), None);
+                offset += result.offset_increment;
+                assert_eq!(offset, body.len());
+                result.result
+            },
+        }
+    }
+}
+
+fn get_sql_state(packet: &Packet, connection: &Connection, offset: &usize) -> Option<SQLState> {
+    if connection.get_handshake_response().unwrap().client_flag
+        & CapabilityFlags::ClientProtocol41 as u32
+        == 0
+    {
+        return None;
+    }
+
+    let mut state_offset = *offset;
+    Some(SQLState {
+        state_marker: {
+            let result = StringFixedLen::from_bytes(&packet.body[state_offset..].to_vec(), Some(1));
+            state_offset += result.offset_increment;
+            result.result
+        },
+        state: {
+            let result = StringFixedLen::from_bytes(&packet.body[state_offset..].to_vec(), Some(5));
+            state_offset += result.offset_increment;
+            assert_eq!(state_offset - offset, 6);
+            result.result
+        },
+    })
+}
+
+#[derive(Debug, Clone)]
+pub struct SQLState {
+    state_marker: String,
+    state: String,
 }
 
 #[allow(dead_code)]
