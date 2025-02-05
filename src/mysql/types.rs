@@ -37,7 +37,11 @@ impl Converter<u64> for IntFixedLen {
 }
 
 impl Converter<u128> for IntLenEnc {
-    fn from_bytes(bytes: &Vec<u8>, _length: Option<usize>) -> DecodeResult<u128> {
+    fn from_bytes(bytes: &Vec<u8>, length: Option<usize>) -> DecodeResult<u128> {
+        if length.is_some() {
+            panic!("IntLenEnc length should not be called with length parameter!");
+        }
+
         match bytes[0] {
             0xFC => {
                 let value: u128 = 0xFC + ((bytes[1] as u128) << 8) + ((bytes[2] as u128) << 16);

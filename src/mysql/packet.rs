@@ -177,7 +177,8 @@ pub struct SessionState {
 }
 
 #[repr(u16)]
-enum ServerStatusFlags {
+pub enum ServerStatusFlags {
+    ServerMoreResultsExist = 0x08,
     ServerSessionStateChanged = 0x01 << 14,
 }
 
@@ -186,7 +187,7 @@ enum ServerStatusFlags {
 pub struct OkData {
     affected_rows: u128,
     last_insert_id: u128,
-    status_flags: Option<u16>,
+    pub status_flags: Option<u16>,
     warnings: Option<u16>,
     info: Option<String>,
     session_state_info: Option<SessionState>,
@@ -261,6 +262,54 @@ impl OkData {
             warnings,
             info,
             session_state_info: None,
+        }
+    }
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct EofData {
+    pub status_flags: Option<u16>,
+    warnings: Option<u16>,
+}
+
+impl EofData {
+    pub fn from_packet(packet: &Packet, connection: &Connection) -> EofData {
+        assert_eq!(packet.p_type, PacketType::Eof);
+
+        let mut offset = 1;
+        let body = &packet.body;
+
+        let warnings;
+        let status_flags;
+
+        if connection.get_handshake_response().unwrap().client_flag
+            & CapabilityFlags::ClientProtocol41 as u32
+            != 0
+        {
+            warnings = Some({
+                let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
+                offset += result.offset_increment;
+                result.result as u16
+            });
+
+            status_flags = Some({
+                let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
+                offset += result.offset_increment;
+                result.result as u16
+            });
+
+            assert_eq!(offset + 2, body.len());
+
+            return EofData {
+                status_flags,
+                warnings,
+            };
+        }
+
+        EofData {
+            status_flags: None,
+            warnings: None,
         }
     }
 }

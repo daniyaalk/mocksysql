@@ -25,6 +25,7 @@ pub enum CapabilityFlags {
     ClientDeprecateEof = 0x01 << 24,
     ClientOptionalResultSetMetadata = 0x01 << 25,
     ClientZSTDCompressionAlgorithm = 0x01 << 26,
+    ClientQueryAttributes = 0x01 << 27,
 }
 
 #[derive(Default)]

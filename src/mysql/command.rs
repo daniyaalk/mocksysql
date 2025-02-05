@@ -6,11 +6,10 @@ pub struct Command {
 }
 
 impl Command {
-    pub fn from_bytes(bytes: &[u8]) -> Command {
-        let com_code = MySqlCommand::from_byte(bytes[0]).unwrap();
-        let arg =
-            String::from_utf8(bytes[1..].to_vec()).expect("Unable to convert bytes to string");
-        Command { com_code, arg: arg }
+    pub fn from_bytes(code: MySqlCommand, bytes: &[u8]) -> Command {
+        let com_code = code;
+        let arg = String::from_utf8(bytes.to_vec()).expect("Unable to convert bytes to string");
+        Command { com_code, arg }
     }
 }
 

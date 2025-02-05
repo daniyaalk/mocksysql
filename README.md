@@ -1,6 +1,6 @@
 # MocksySQL
 
-MocksySQL is a work-in-progress application with an as yet undecided scope. In broad strokes, it needs to achieve the 
+MocksySQL is a work-in-progress application with an as yet undecided scope. In broad strokes, it needs to achieve the
 following:
 
 * Log queries and intercept responses from the MySQL server.
@@ -11,6 +11,11 @@ following:
 
 I hope to get these features implemented, but I may decide not to as well:
 
-* Get drip-fed packet capture from production environment and return the same responses for specified queries from the 
-proxy.
-  * If a certain predetermined time passes after the query is received, perform read on primary database.
+* Get drip-fed packet capture from production environment and return the same responses for specified queries from the
+  proxy.
+    * If a certain predetermined time passes after the query is received, perform read on primary database.
+
+## Not supported:
+
+* Binary Protocol
+* TLS

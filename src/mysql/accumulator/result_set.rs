@@ -1,7 +1,7 @@
 use crate::connection::{Connection, Phase};
 use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags};
 use crate::mysql::command::MySqlCommand;
-use crate::mysql::packet::{ErrorData, OkData, Packet, PacketType};
+use crate::mysql::packet::{EofData, ErrorData, OkData, Packet, PacketType, ServerStatusFlags};
 use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringLenEnc};
 use std::any::Any;
 
@@ -35,6 +35,7 @@ impl Accumulator for ResponseAccumulator {
 
         if packet.p_type == PacketType::Ok {
             let ok_data = OkData::from_packet(packet, connection);
+            self.state = State::Complete;
             println!("{:?}", ok_data);
         }
 
@@ -88,8 +89,31 @@ impl Accumulator for ResponseAccumulator {
             }
             State::HydrateRows => {
                 if packet.get_packet_type() != PacketType::Other {
-                    self.state = State::Complete;
-                    next_phase = self.consume(packet, connection);
+                    let mut status_flags: Option<u16> = None;
+
+                    match packet.get_packet_type() {
+                        PacketType::Ok => {
+                            status_flags = OkData::from_packet(packet, connection).status_flags
+                        }
+                        PacketType::Eof => {
+                            status_flags = EofData::from_packet(packet, connection).status_flags
+                        }
+                        _ => (),
+                    }
+
+                    if packet.p_type == PacketType::Error
+                        || (status_flags.is_some()
+                            && (status_flags.unwrap()
+                                & ServerStatusFlags::ServerMoreResultsExist as u16
+                                == 0))
+                    {
+                        // No further Result Sets remaining
+                        self.state = State::Complete;
+                        next_phase = self.consume(packet, connection);
+                    } else {
+                        // More ResultSets in Pipeline
+                        self.state = State::Initiated;
+                    }
                 }
             }
             State::Complete => {
