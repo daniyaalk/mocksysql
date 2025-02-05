@@ -1,7 +1,7 @@
 use crate::connection::{Connection, Phase};
 use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags};
 use crate::mysql::command::MySqlCommand;
-use crate::mysql::packet::{ErrorPacket, Packet, PacketType};
+use crate::mysql::packet::{ErrorData, OkData, Packet, PacketType};
 use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringLenEnc};
 use std::any::Any;
 
@@ -17,7 +17,7 @@ pub struct ResponseAccumulator {
     status: Option<PacketType>,
     column_count: usize,
     accumulation_complete: bool,
-    error: Option<ErrorPacket>,
+    error: Option<ErrorData>,
 }
 
 impl Accumulator for ResponseAccumulator {
@@ -30,7 +30,12 @@ impl Accumulator for ResponseAccumulator {
 
         if packet.p_type == PacketType::Error {
             self.state = State::Complete;
-            self.error = Some(ErrorPacket::from_packet(packet, connection));
+            self.error = Some(ErrorData::from_packet(packet, connection));
+        }
+
+        if packet.p_type == PacketType::Ok {
+            let ok_data = OkData::from_packet(packet, connection);
+            println!("{:?}", ok_data);
         }
 
         match self.state {
@@ -133,7 +138,7 @@ struct ColumnDefinition {
     org_table: String,
     name: String,
     org_name: String,
-    fixed_length_fields: u64,
+    fixed_length_fields: u128,
     character_set: u16,
     column_length: u32,
     field_type: FieldTypes,
@@ -185,11 +190,10 @@ impl ColumnDefinition {
                 result.result
             },
             character_set: {
-                // assert_eq!(offset, packet.body.len() - 3);
                 let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
                 offset += result.offset_increment;
                 result.result as u16
-            }, // TODO
+            },
             column_length: {
                 let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(4));
                 offset += result.offset_increment;

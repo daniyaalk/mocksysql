@@ -14,6 +14,7 @@ pub struct CommandAccumulator {
 impl Accumulator for CommandAccumulator {
     fn consume(&mut self, packet: &Packet, _connection: &Connection) -> Phase {
         self.command = Some(Command::from_bytes(&packet.body));
+        println!("Command details: {:?}", self.command);
         Phase::PendingResponse
     }
 

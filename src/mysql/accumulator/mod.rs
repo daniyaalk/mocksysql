@@ -16,10 +16,12 @@ pub enum CapabilityFlags {
     #[allow(dead_code)]
     ClientLongPassword = 0x01,
     ClientConnectWithDB = 0x08,
+    ClientTransactions = 8192,
     ClientProtocol41 = 0x01 << 9,
     ClientPluginAuth = 0x01 << 19,
     ClientConnectAttrs = 0x01 << 20,
     ClientPluginAuthLenEncClientData = 0x01 << 21,
+    ClientSessionTrack = 0x01 << 23,
     ClientDeprecateEof = 0x01 << 24,
     ClientOptionalResultSetMetadata = 0x01 << 25,
     ClientZSTDCompressionAlgorithm = 0x01 << 26,
