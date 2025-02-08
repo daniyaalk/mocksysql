@@ -44,21 +44,29 @@ impl Converter<u128> for IntLenEnc {
 
         match bytes[0] {
             0xFC => {
-                let value: u128 = 0xFC + ((bytes[1] as u128) << 8) + ((bytes[2] as u128) << 16);
+                let value: u128 = (bytes[1] as u128) + ((bytes[2] as u128) << 8);
                 DecodeResult {
                     result: value,
                     offset_increment: 3,
                 }
             }
+            0xFD => {
+                let value: u128 =
+                    (bytes[1] as u128) + ((bytes[2] as u128) << 8) + ((bytes[3] as u128) << 16);
+                DecodeResult {
+                    result: value,
+                    offset_increment: 4,
+                }
+            }
             0xFE => {
-                let value: u128 = 0xFC
-                    + ((bytes[1] as u128) << 8)
-                    + ((bytes[2] as u128) << 16)
-                    + ((bytes[3] as u128) << 24)
-                    + ((bytes[4] as u128) << 32)
-                    + ((bytes[5] as u128) << 40)
-                    + ((bytes[6] as u128) << 48)
-                    + ((bytes[7] as u128) << 56);
+                let value: u128 = (bytes[1] as u128)
+                    + ((bytes[2] as u128) << 8)
+                    + ((bytes[3] as u128) << 16)
+                    + ((bytes[4] as u128) << 24)
+                    + ((bytes[5] as u128) << 32)
+                    + ((bytes[6] as u128) << 40)
+                    + ((bytes[7] as u128) << 48)
+                    + ((bytes[8] as u128) << 56);
                 DecodeResult {
                     result: value,
                     offset_increment: 9,
@@ -156,7 +164,23 @@ mod tests {
             0x20, 0x77, 0x69, 0x74, 0x68, 0x20, 0x73, 0x70, 0x61, 0x63, 0x65, 0x73,
         ];
         let result = StringLenEnc::from_bytes(&bytes, None);
-        assert_eq!(true, "sample string with spaces".eq(&result.result));
+        assert!("sample string with spaces".eq(&result.result));
         assert_eq!(26, result.offset_increment);
+    }
+
+    #[test]
+    fn test_int_len_enc() {
+        let bytes: Vec<u8> = vec![0xfe, 0x3c, 0x58, 0xd7, 0xfa, 0xc2, 0x05, 0x00, 0x00];
+        assert_eq!(6334990211132, IntLenEnc::from_bytes(&bytes, None).result);
+    }
+
+    #[test]
+    fn test_encode() {
+        let result = IntLenEnc::encode(6334990211130, None);
+        // fe  3a  58  d7  fa  c2  05  00  00
+        assert_eq!(
+            vec![0xfe, 0x3a, 0x58, 0xd7, 0xfa, 0xc2, 0x05, 0x00, 0x00],
+            result
+        );
     }
 }
