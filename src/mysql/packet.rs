@@ -264,6 +264,16 @@ impl OkData {
             session_state_info: None,
         }
     }
+
+    // pub fn to_pakcet(data: OkData, connection: &Connection) -> Packet {
+    //     let mut body: Vec<u8> = Vec::new();
+    //
+    //     Packet {
+    //         header: PacketHeader {},
+    //         body: vec![],
+    //         p_type: PacketType::Ok,
+    //     }
+    // }
 }
 
 #[derive(Debug)]

@@ -156,10 +156,6 @@ impl Accumulator for HandshakeAccumulator {
         self.accumulation_complete
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn get_accumulation_delta(&self) -> Option<AccumulationDelta> {
         Some(AccumulationDelta {
             handshake: Some(self.clone()),

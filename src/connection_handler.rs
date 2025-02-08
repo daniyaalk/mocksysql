@@ -98,5 +98,5 @@ pub fn initiate(client: TcpStream) {
 fn intercept_enabled() -> bool {
     // env::var("INTERCEPT_INSERT").is_ok()
     //     && env::var("INTERCEPT_INSERT").unwrap().eq("true")
-    true
+    false
 }

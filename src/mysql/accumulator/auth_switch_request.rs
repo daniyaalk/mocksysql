@@ -2,7 +2,6 @@ use crate::connection::{Connection, Phase};
 use crate::mysql::accumulator::Accumulator;
 use crate::mysql::packet::Packet;
 use crate::mysql::types::{Converter, IntFixedLen, StringEOFEnc, StringNullEnc};
-use std::any::Any;
 
 #[derive(Debug, Default)]
 pub struct AuthSwitchRequestAccumulator {
@@ -47,9 +46,5 @@ impl Accumulator for AuthSwitchRequestAccumulator {
 
     fn accumulation_complete(&self) -> bool {
         self.accumulation_complete
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
     }
 }

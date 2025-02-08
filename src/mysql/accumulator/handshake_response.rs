@@ -166,10 +166,6 @@ impl Accumulator for HandshakeResponseAccumulator {
         self.accumulation_complete
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn get_accumulation_delta(&self) -> Option<AccumulationDelta> {
         Some(AccumulationDelta {
             handshake_response: Some(self.clone()), // Lots of performance being left on the table with this, fix it later

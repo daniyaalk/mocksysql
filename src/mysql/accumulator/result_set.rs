@@ -129,10 +129,6 @@ impl Accumulator for ResponseAccumulator {
         true
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn get_accumulation_delta(&self) -> Option<AccumulationDelta> {
         Some(AccumulationDelta {
             response: Some(self.clone()), // yuck

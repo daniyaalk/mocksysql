@@ -4,7 +4,6 @@ use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags}
 use crate::mysql::command::{Command, MySqlCommand};
 use crate::mysql::packet::Packet;
 use crate::mysql::types::{Converter, IntLenEnc};
-use std::any::Any;
 
 #[derive(Debug, Clone, Default)]
 pub struct CommandAccumulator {
@@ -73,15 +72,12 @@ impl Accumulator for CommandAccumulator {
             &packet.body[offset..],
         ));
         println!("Command details: {:?}", self.command);
+        self.accumulation_complete = true;
         Phase::PendingResponse
     }
 
     fn accumulation_complete(&self) -> bool {
         self.accumulation_complete
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
     }
 
     fn get_accumulation_delta(&self) -> Option<AccumulationDelta> {

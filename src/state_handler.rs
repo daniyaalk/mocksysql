@@ -54,7 +54,7 @@ fn sync_connection_state(
     connection: &mut MutexGuard<Connection>,
     accumulator: Box<dyn Accumulator>,
 ) {
-    if accumulator.get_accumulation_delta().is_some() {
+    if accumulator.accumulation_complete() && accumulator.get_accumulation_delta().is_some() {
         let delta = accumulator.get_accumulation_delta().unwrap();
 
         if delta.handshake.is_some() {

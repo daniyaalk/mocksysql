@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 pub struct DecodeResult<T> {
     pub result: T,
     pub offset_increment: usize,
@@ -5,6 +7,10 @@ pub struct DecodeResult<T> {
 
 pub trait Converter<T> {
     fn from_bytes(bytes: &Vec<u8>, length: Option<usize>) -> DecodeResult<T>;
+
+    fn encode(value: T, length: Option<usize>) -> Vec<u8> {
+        todo!("Not implemented")
+    }
 }
 
 pub trait FixedLengthConverter<T> {
@@ -33,6 +39,17 @@ impl Converter<u64> for IntFixedLen {
             result: u64::from_le_bytes(buffer),
             offset_increment: length.unwrap(),
         }
+    }
+
+    fn encode(value: u64, length: Option<usize>) -> Vec<u8> {
+        let mut buffer = VecDeque::with_capacity(length.unwrap());
+        let bytes = &value.to_le_bytes();
+
+        for i in 0..length.unwrap() {
+            buffer.push_back(bytes[i]);
+        }
+
+        buffer.into()
     }
 }
 
@@ -72,20 +89,36 @@ impl Converter<u128> for IntLenEnc {
                     offset_increment: 9,
                 }
             }
-            0xFD => {
-                let value: u128 = 0xFC
-                    + ((bytes[1] as u128) << 8)
-                    + ((bytes[2] as u128) << 16)
-                    + ((bytes[3] as u128) << 24);
-                DecodeResult {
-                    result: value,
-                    offset_increment: 4,
-                }
-            }
             _ => DecodeResult {
                 result: bytes[0] as u128,
                 offset_increment: 1,
             },
+        }
+    }
+
+    fn encode(value: u128, length: Option<usize>) -> Vec<u8> {
+        if length.is_some() {
+            panic!("IntLenEnc length should not be called with length parameter!");
+        }
+
+        if value < 251 {
+            // 1-byte encoding
+            vec![value as u8]
+        } else if value <= 0xFFFF {
+            // 2-byte encoding (0xFC followed by 2 bytes)
+            let mut bytes = vec![0xFC];
+            bytes.extend_from_slice(&(value as u16).to_le_bytes());
+            bytes
+        } else if value <= 0xFFFFFF {
+            // 3-byte encoding (0xFD followed by 3 bytes)
+            let mut bytes = vec![0xFD];
+            bytes.extend_from_slice(&(value as u32).to_le_bytes()[..3]);
+            bytes
+        } else {
+            // 8-byte encoding (0xFE followed by 8 bytes)
+            let mut bytes = vec![0xFE];
+            bytes.extend_from_slice(&(value as u64).to_le_bytes());
+            bytes
         }
     }
 }
