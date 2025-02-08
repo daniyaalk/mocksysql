@@ -32,6 +32,11 @@ fn exchange(
             break;
         }
 
+        let current_phase = { connection.lock().unwrap().phase.clone() };
+        if current_phase == Phase::TlsExchange {
+            handle_tls(connection.clone(), from.try_clone()?, &mut buf, &direction);
+        }
+
         let packets = state_handler::process_incoming_frame(&buf, &connection, &direction);
 
         if intercept_enabled() {
@@ -60,6 +65,16 @@ fn exchange(
     }
 
     Ok(())
+}
+
+fn handle_tls(
+    connection: Arc<Mutex<Connection>>,
+    from: TcpStream,
+    buf: &mut [u8; 4096],
+    direction: &Direction,
+) {
+    let mut connection = connection.lock().unwrap();
+    connection.phase = Phase::HandshakeResponse;
 }
 
 fn get_write_response(

@@ -53,6 +53,7 @@ impl Connection {
 pub enum Phase {
     #[default]
     Handshake,
+    TlsExchange,
     HandshakeResponse,
     AuthInit,
     AuthSwitchResponse,

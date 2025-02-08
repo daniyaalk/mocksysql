@@ -57,6 +57,19 @@ impl Accumulator for HandshakeResponseAccumulator {
             assert!(FILLER.eq(&result.result));
             result.result
         };
+
+        if CapabilityFlags::ClientSsl as u32 & client_flag != 0 {
+            self.accumulation_complete = true;
+
+            self.client_flag = client_flag;
+            self.max_packet_size = max_packet_size;
+            self.character_set = character_set;
+            self.filler = filler;
+
+            assert_eq!(packet.body.len(), offset);
+            return Phase::TlsExchange;
+        }
+
         let username = {
             let result = StringNullEnc::from_bytes(&packet.body[offset..].to_vec(), None);
             offset += result.offset_increment;

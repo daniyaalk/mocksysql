@@ -78,6 +78,7 @@ fn get_accumulator(
 ) -> Box<dyn Accumulator> {
     match phase {
         Phase::Handshake => Box::from(HandshakeAccumulator::default()),
+        Phase::TlsExchange => unreachable!(),
         Phase::HandshakeResponse => Box::from(HandshakeResponseAccumulator::default()),
         Phase::AuthInit => Box::from(AuthInitAccumulator::default()),
         Phase::AuthSwitchResponse => Box::from(AuthSwitchResponseAccumulator::default()),
