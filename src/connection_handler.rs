@@ -65,7 +65,7 @@ pub fn initiate(client: TcpStream) {
     let connection2 = Arc::clone(&connection);
 
     let target_address: &str = "127.0.0.1:3307";
-    let client_address = client.peer_addr().unwrap().clone();
+    let client_address = client.peer_addr().unwrap();
 
     let server = TcpStream::connect(target_address).expect("Fault");
 
@@ -77,7 +77,7 @@ pub fn initiate(client: TcpStream) {
             client,
             server_clone,
             Direction::C2S,
-            client_address.clone(),
+            client_address,
             connection,
         )
     });
@@ -86,7 +86,7 @@ pub fn initiate(client: TcpStream) {
             server,
             client_clone,
             Direction::S2C,
-            client_address.clone(),
+            client_address,
             connection2,
         )
     });

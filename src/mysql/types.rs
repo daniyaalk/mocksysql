@@ -7,6 +7,10 @@ pub trait Converter<T> {
     fn from_bytes(bytes: &Vec<u8>, length: Option<usize>) -> DecodeResult<T>;
 }
 
+pub trait FixedLengthConverter<T> {
+    fn from_bytes(bytes: &[u8], length: usize) -> DecodeResult<T>;
+}
+
 pub struct IntLenEnc {}
 pub struct IntFixedLen {}
 pub struct StringLenEnc {}
@@ -32,42 +36,46 @@ impl Converter<u64> for IntFixedLen {
     }
 }
 
-impl Converter<u64> for IntLenEnc {
-    fn from_bytes(bytes: &Vec<u8>, _length: Option<usize>) -> DecodeResult<u64> {
+impl Converter<u128> for IntLenEnc {
+    fn from_bytes(bytes: &Vec<u8>, length: Option<usize>) -> DecodeResult<u128> {
+        if length.is_some() {
+            panic!("IntLenEnc length should not be called with length parameter!");
+        }
+
         match bytes[0] {
             0xFC => {
-                let value: u64 = 0xFC + ((bytes[1] as u64) << 8) + ((bytes[2] as u64) << 16);
+                let value: u128 = 0xFC + ((bytes[1] as u128) << 8) + ((bytes[2] as u128) << 16);
                 DecodeResult {
                     result: value,
                     offset_increment: 3,
                 }
             }
             0xFE => {
-                let value: u64 = 0xFC
-                    + ((bytes[1] as u64) << 8)
-                    + ((bytes[2] as u64) << 16)
-                    + ((bytes[3] as u64) << 24)
-                    + ((bytes[4] as u64) << 32)
-                    + ((bytes[5] as u64) << 40)
-                    + ((bytes[6] as u64) << 48)
-                    + ((bytes[7] as u64) << 56);
+                let value: u128 = 0xFC
+                    + ((bytes[1] as u128) << 8)
+                    + ((bytes[2] as u128) << 16)
+                    + ((bytes[3] as u128) << 24)
+                    + ((bytes[4] as u128) << 32)
+                    + ((bytes[5] as u128) << 40)
+                    + ((bytes[6] as u128) << 48)
+                    + ((bytes[7] as u128) << 56);
                 DecodeResult {
                     result: value,
                     offset_increment: 9,
                 }
             }
             0xFD => {
-                let value: u64 = 0xFC
-                    + ((bytes[1] as u64) << 8)
-                    + ((bytes[2] as u64) << 16)
-                    + ((bytes[3] as u64) << 24);
+                let value: u128 = 0xFC
+                    + ((bytes[1] as u128) << 8)
+                    + ((bytes[2] as u128) << 16)
+                    + ((bytes[3] as u128) << 24);
                 DecodeResult {
                     result: value,
                     offset_increment: 4,
                 }
             }
             _ => DecodeResult {
-                result: bytes[0] as u64,
+                result: bytes[0] as u128,
                 offset_increment: 1,
             },
         }

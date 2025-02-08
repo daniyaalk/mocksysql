@@ -1,7 +1,7 @@
 use crate::connection::{Connection, Phase};
 use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags};
 use crate::mysql::command::MySqlCommand;
-use crate::mysql::packet::{Packet, PacketType};
+use crate::mysql::packet::{EofData, ErrorData, OkData, Packet, PacketType, ServerStatusFlags};
 use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringLenEnc};
 use std::any::Any;
 
@@ -17,6 +17,7 @@ pub struct ResponseAccumulator {
     status: Option<PacketType>,
     column_count: usize,
     accumulation_complete: bool,
+    error: Option<ErrorData>,
 }
 
 impl Accumulator for ResponseAccumulator {
@@ -26,6 +27,18 @@ impl Accumulator for ResponseAccumulator {
         if connection.get_last_command().is_none() {
             panic!("Attempt to populate Result")
         }
+
+        if packet.p_type == PacketType::Error {
+            self.state = State::Complete;
+            self.error = Some(ErrorData::from_packet(packet, connection));
+        }
+
+        if packet.p_type == PacketType::Ok {
+            let ok_data = OkData::from_packet(packet, connection);
+            self.state = State::Complete;
+            println!("{:?}", ok_data);
+        }
+
         match self.state {
             State::Initiated => {
                 if connection.get_last_command().unwrap().com_code == MySqlCommand::ComQuery {
@@ -76,8 +89,31 @@ impl Accumulator for ResponseAccumulator {
             }
             State::HydrateRows => {
                 if packet.get_packet_type() != PacketType::Other {
-                    self.state = State::Complete;
-                    next_phase = self.consume(packet, connection);
+                    let mut status_flags: Option<u16> = None;
+
+                    match packet.get_packet_type() {
+                        PacketType::Ok => {
+                            status_flags = OkData::from_packet(packet, connection).status_flags
+                        }
+                        PacketType::Eof => {
+                            status_flags = EofData::from_packet(packet, connection).status_flags
+                        }
+                        _ => (),
+                    }
+
+                    if packet.p_type == PacketType::Error
+                        || (status_flags.is_some()
+                            && (status_flags.unwrap()
+                                & ServerStatusFlags::ServerMoreResultsExist as u16
+                                == 0))
+                    {
+                        // No further Result Sets remaining
+                        self.state = State::Complete;
+                        next_phase = self.consume(packet, connection);
+                    } else {
+                        // More ResultSets in Pipeline
+                        self.state = State::Initiated;
+                    }
                 }
             }
             State::Complete => {
@@ -126,7 +162,7 @@ struct ColumnDefinition {
     org_table: String,
     name: String,
     org_name: String,
-    fixed_length_fields: u64,
+    fixed_length_fields: u128,
     character_set: u16,
     column_length: u32,
     field_type: FieldTypes,
@@ -178,11 +214,10 @@ impl ColumnDefinition {
                 result.result
             },
             character_set: {
-                // assert_eq!(offset, packet.body.len() - 3);
                 let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
                 offset += result.offset_increment;
                 result.result as u16
-            }, // TODO
+            },
             column_length: {
                 let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(4));
                 offset += result.offset_increment;

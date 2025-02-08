@@ -1,4 +1,6 @@
-use crate::connection::Phase;
+use crate::connection::{Connection, Phase};
+use crate::mysql::accumulator::CapabilityFlags;
+use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringEOFEnc, StringFixedLen};
 use std::{fmt::Error, usize};
 
 #[derive(Debug)]
@@ -103,11 +105,211 @@ impl Packet {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ErrorData {
+    pub error_code: u16,
+    pub sql_state: Option<SQLState>,
+    pub error_message: String,
+}
+
+impl ErrorData {
+    pub fn from_packet(packet: &Packet, connection: &Connection) -> ErrorData {
+        assert_eq!(packet.p_type, PacketType::Error);
+        let body = &packet.body;
+
+        let mut offset = 1;
+
+        ErrorData {
+            error_code: {
+                let result = IntFixedLen::from_bytes(body, Some(2));
+                offset += result.offset_increment;
+                result.result as u16
+            },
+            sql_state: {
+                let sql_state = get_sql_state(packet, connection, &offset);
+                offset += 6;
+                sql_state
+            },
+            error_message: {
+                let result = StringEOFEnc::from_bytes(&body[offset..].to_vec(), None);
+                offset += result.offset_increment;
+                assert_eq!(offset, body.len());
+                result.result
+            },
+        }
+    }
+}
+
+fn get_sql_state(packet: &Packet, connection: &Connection, offset: &usize) -> Option<SQLState> {
+    if connection.get_handshake_response().unwrap().client_flag
+        & CapabilityFlags::ClientProtocol41 as u32
+        == 0
+    {
+        return None;
+    }
+
+    let mut state_offset = *offset;
+    Some(SQLState {
+        state_marker: {
+            let result = StringFixedLen::from_bytes(&packet.body[state_offset..].to_vec(), Some(1));
+            state_offset += result.offset_increment;
+            result.result
+        },
+        state: {
+            let result = StringFixedLen::from_bytes(&packet.body[state_offset..].to_vec(), Some(5));
+            state_offset += result.offset_increment;
+            assert_eq!(state_offset - offset, 6);
+            result.result
+        },
+    })
+}
+
+#[derive(Debug, Clone)]
+pub struct SQLState {
+    state_marker: String,
+    state: String,
+}
+
+#[derive(Debug)]
+pub struct SessionState {
+    type_: u8,
+    data: String,
+}
+
+#[repr(u16)]
+pub enum ServerStatusFlags {
+    ServerMoreResultsExist = 0x08,
+    ServerSessionStateChanged = 0x01 << 14,
+}
+
+#[derive(Debug)]
 #[allow(dead_code)]
 pub struct OkData {
-    rows_len: usize,
-    id: u64,
-    server_status: [u8; 2],
-    warning_count: [u8; 2],
-    message: Vec<u8>,
+    affected_rows: u128,
+    last_insert_id: u128,
+    pub status_flags: Option<u16>,
+    warnings: Option<u16>,
+    info: Option<String>,
+    session_state_info: Option<SessionState>,
+}
+
+impl OkData {
+    pub fn from_packet(packet: &Packet, connection: &Connection) -> OkData {
+        assert_eq!(packet.p_type, PacketType::Ok);
+
+        let mut offset = 1;
+        let body = &packet.body;
+
+        let affected_rows = {
+            let result = IntLenEnc::from_bytes(&body[offset..].to_vec(), None);
+            offset += result.offset_increment;
+            result.result
+        };
+
+        let last_insert_id = {
+            let result = IntLenEnc::from_bytes(&body[offset..].to_vec(), None);
+            offset += result.offset_increment;
+            result.result
+        };
+
+        let mut status_flags = None;
+        let mut warnings = None;
+        if connection.get_handshake_response().unwrap().client_flag
+            & CapabilityFlags::ClientProtocol41 as u32
+            != 0
+        {
+            status_flags = Some({
+                let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
+                offset += result.offset_increment;
+                result.result as u16
+            });
+            warnings = Some({
+                let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
+                offset += result.offset_increment;
+                result.result as u16
+            })
+        } else if connection.get_handshake_response().unwrap().client_flag
+            & CapabilityFlags::ClientTransactions as u32
+            != 0
+        {
+            status_flags = Some({
+                let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
+                offset += result.offset_increment;
+                result.result as u16
+            })
+        }
+
+        let mut info = None;
+        if connection.get_handshake_response().unwrap().client_flag
+            & CapabilityFlags::ClientSessionTrack as u32
+            != 0
+        {
+            // The documentation is not clear about the condition below, how do we infer if status is not empty??
+            // https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_basic_ok_packet.html
+            // if (status_flags.unwrap() & ServerStatusFlags::ServerSessionStateChanged as u16) != 0 {
+            //     info = {
+            //         let result = StringLenEnc::from_bytes(&body[offset..].to_vec(), None);
+            //         offset += result.offset_increment;
+            //         Some(result.result)
+            //     }
+            // }
+        }
+
+        OkData {
+            affected_rows,
+            last_insert_id,
+            status_flags,
+            warnings,
+            info,
+            session_state_info: None,
+        }
+    }
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct EofData {
+    pub status_flags: Option<u16>,
+    warnings: Option<u16>,
+}
+
+impl EofData {
+    pub fn from_packet(packet: &Packet, connection: &Connection) -> EofData {
+        assert_eq!(packet.p_type, PacketType::Eof);
+
+        let mut offset = 1;
+        let body = &packet.body;
+
+        let warnings;
+        let status_flags;
+
+        if connection.get_handshake_response().unwrap().client_flag
+            & CapabilityFlags::ClientProtocol41 as u32
+            != 0
+        {
+            warnings = Some({
+                let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
+                offset += result.offset_increment;
+                result.result as u16
+            });
+
+            status_flags = Some({
+                let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
+                offset += result.offset_increment;
+                result.result as u16
+            });
+
+            assert_eq!(offset + 2, body.len());
+
+            return EofData {
+                status_flags,
+                warnings,
+            };
+        }
+
+        EofData {
+            status_flags: None,
+            warnings: None,
+        }
+    }
 }

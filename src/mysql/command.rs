@@ -6,17 +6,14 @@ pub struct Command {
 }
 
 impl Command {
-    pub fn from_bytes(bytes: &[u8]) -> Command {
-        let com_code = MySqlCommand::from_byte(bytes[0]).unwrap();
-
-        Command {
-            com_code,
-            arg: String::from_utf8(bytes[1..].to_vec()).unwrap(),
-        }
+    pub fn from_bytes(code: MySqlCommand, bytes: &[u8]) -> Command {
+        let com_code = code;
+        let arg = String::from_utf8(bytes.to_vec()).expect("Unable to convert bytes to string");
+        Command { com_code, arg }
     }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MySqlCommand {
     ComSleep = 0x00,
