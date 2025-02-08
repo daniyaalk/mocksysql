@@ -1,16 +1,20 @@
+use crate::connection::Phase;
+use crate::mysql::command::{Command, MySqlCommand};
+use crate::mysql::packet::{OkData, Packet, PacketType};
+use crate::{
+    connection::{Connection, Direction},
+    state_handler,
+};
+use std::sync::atomic::AtomicU8;
 use std::{
+    env,
     io::{Error, Read, Write},
     net::{SocketAddr, TcpStream},
     sync::{Arc, Mutex},
     thread,
 };
 
-use crate::mysql::command::MySqlCommand;
-use crate::mysql::packet::PacketType;
-use crate::{
-    connection::{Connection, Direction},
-    state_handler,
-};
+static GLOBAL_COUNTER: AtomicU8 = AtomicU8::new(100);
 
 fn exchange(
     mut from: TcpStream,
@@ -31,25 +35,23 @@ fn exchange(
         let packets = state_handler::process_incoming_frame(&buf, &connection, &direction);
 
         if intercept_enabled() {
-            let connection_mutex = connection.lock().unwrap();
-            let last_command = &connection_mutex.last_command;
+            let mut connection_mutex = connection.lock().unwrap();
+            let last_command = connection_mutex.last_command.clone();
+            let client_flag = connection_mutex
+                .handshake_response
+                .as_ref()
+                .map(|hr| hr.client_flag);
 
-            for packet in packets {
-                if packet.p_type.eq(&PacketType::Command)
-                    && last_command.is_some()
-                    && last_command
-                        .as_ref()
-                        .unwrap()
-                        .com_code
-                        .eq(&MySqlCommand::ComQuery)
-                    && last_command
-                        .as_ref()
-                        .unwrap()
-                        .arg
-                        .to_lowercase()
-                        .starts_with("insert")
-                {
-                    panic!()
+            if packets.len() == 1 && is_write_query(&last_command, packets.first().unwrap()) {
+                if let Some(response) = get_write_response(
+                    &last_command,
+                    &packets.first().unwrap().header.seq,
+                    client_flag.unwrap(),
+                ) {
+                    println!("{:?}", response);
+                    connection_mutex.phase = Phase::Command;
+                    from.write_all(&response)?;
+                    continue;
                 }
             }
         }
@@ -58,6 +60,40 @@ fn exchange(
     }
 
     Ok(())
+}
+
+fn get_write_response(
+    last_command: &Option<Command>,
+    sequence: &u8,
+    client_flag: u32,
+) -> Option<Vec<u8>> {
+    let count = GLOBAL_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let ok_data = OkData {
+        header: 0x00,
+        affected_rows: 1,
+        last_insert_id: count as u64,
+        status_flags: None,
+        warnings: None,
+        info: None,
+        session_state_info: None,
+    };
+
+    Some(ok_data.to_packet(sequence + 1, client_flag).to_bytes())
+}
+
+fn is_write_query(last_command: &Option<Command>, packet: &Packet) -> bool {
+    if last_command.is_none() {
+        return false;
+    }
+
+    let last_command = last_command.as_ref().unwrap();
+    let last_command_arg = &last_command.arg.to_lowercase();
+
+    packet.p_type.eq(&PacketType::Command)
+        && last_command.com_code.eq(&MySqlCommand::ComQuery)
+        && (last_command_arg.starts_with("insert")
+            || last_command_arg.starts_with("update")
+            || last_command_arg.starts_with("delete"))
 }
 
 pub fn initiate(client: TcpStream) {
@@ -96,7 +132,5 @@ pub fn initiate(client: TcpStream) {
 }
 
 fn intercept_enabled() -> bool {
-    // env::var("INTERCEPT_INSERT").is_ok()
-    //     && env::var("INTERCEPT_INSERT").unwrap().eq("true")
-    false
+    env::var("INTERCEPT_INSERT").is_ok() && env::var("INTERCEPT_INSERT").unwrap() == "true"
 }
