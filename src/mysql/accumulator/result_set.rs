@@ -158,7 +158,7 @@ struct ColumnDefinition {
     org_table: String,
     name: String,
     org_name: String,
-    fixed_length_fields: u128,
+    fixed_length_fields: u64,
     character_set: u16,
     column_length: u32,
     field_type: FieldTypes,

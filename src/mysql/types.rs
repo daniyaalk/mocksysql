@@ -45,58 +45,58 @@ impl Converter<u64> for IntFixedLen {
         let mut buffer = VecDeque::with_capacity(length.unwrap());
         let bytes = &value.to_le_bytes();
 
-        for i in 0..length.unwrap() {
-            buffer.push_back(bytes[i]);
+        for byte in bytes[0..length.unwrap()].iter() {
+            buffer.push_back(*byte);
         }
 
         buffer.into()
     }
 }
 
-impl Converter<u128> for IntLenEnc {
-    fn from_bytes(bytes: &Vec<u8>, length: Option<usize>) -> DecodeResult<u128> {
+impl Converter<u64> for IntLenEnc {
+    fn from_bytes(bytes: &Vec<u8>, length: Option<usize>) -> DecodeResult<u64> {
         if length.is_some() {
             panic!("IntLenEnc length should not be called with length parameter!");
         }
 
         match bytes[0] {
             0xFC => {
-                let value: u128 = (bytes[1] as u128) + ((bytes[2] as u128) << 8);
+                let value: u64 = (bytes[1] as u64) + ((bytes[2] as u64) << 8);
                 DecodeResult {
                     result: value,
                     offset_increment: 3,
                 }
             }
             0xFD => {
-                let value: u128 =
-                    (bytes[1] as u128) + ((bytes[2] as u128) << 8) + ((bytes[3] as u128) << 16);
+                let value: u64 =
+                    (bytes[1] as u64) + ((bytes[2] as u64) << 8) + ((bytes[3] as u64) << 16);
                 DecodeResult {
                     result: value,
                     offset_increment: 4,
                 }
             }
             0xFE => {
-                let value: u128 = (bytes[1] as u128)
-                    + ((bytes[2] as u128) << 8)
-                    + ((bytes[3] as u128) << 16)
-                    + ((bytes[4] as u128) << 24)
-                    + ((bytes[5] as u128) << 32)
-                    + ((bytes[6] as u128) << 40)
-                    + ((bytes[7] as u128) << 48)
-                    + ((bytes[8] as u128) << 56);
+                let value: u64 = (bytes[1] as u64)
+                    + ((bytes[2] as u64) << 8)
+                    + ((bytes[3] as u64) << 16)
+                    + ((bytes[4] as u64) << 24)
+                    + ((bytes[5] as u64) << 32)
+                    + ((bytes[6] as u64) << 40)
+                    + ((bytes[7] as u64) << 48)
+                    + ((bytes[8] as u64) << 56);
                 DecodeResult {
                     result: value,
                     offset_increment: 9,
                 }
             }
             _ => DecodeResult {
-                result: bytes[0] as u128,
+                result: bytes[0] as u64,
                 offset_increment: 1,
             },
         }
     }
 
-    fn encode(value: u128, length: Option<usize>) -> Vec<u8> {
+    fn encode(value: u64, length: Option<usize>) -> Vec<u8> {
         if length.is_some() {
             panic!("IntLenEnc length should not be called with length parameter!");
         }
@@ -128,8 +128,8 @@ impl Converter<String> for StringLenEnc {
         let length = IntLenEnc::from_bytes(bytes, None);
         let mut result: String = "".to_string();
         let offset = length.offset_increment;
-        for i in offset..offset + (length.result as usize) {
-            result.push(bytes[i] as char);
+        for byte in bytes[offset..offset + (length.result as usize)].iter() {
+            result.push(*byte as char);
         }
 
         DecodeResult {
@@ -193,7 +193,7 @@ mod tests {
     #[test]
     fn test_string_len_enc() {
         let bytes: Vec<u8> = vec![
-            0x18, 0x73, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x20, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67,
+            0x19, 0x73, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x20, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67,
             0x20, 0x77, 0x69, 0x74, 0x68, 0x20, 0x73, 0x70, 0x61, 0x63, 0x65, 0x73,
         ];
         let result = StringLenEnc::from_bytes(&bytes, None);

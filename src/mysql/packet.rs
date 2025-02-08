@@ -185,8 +185,8 @@ pub enum ServerStatusFlags {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct OkData {
-    affected_rows: u128,
-    last_insert_id: u128,
+    affected_rows: u64,
+    last_insert_id: u64,
     pub status_flags: Option<u16>,
     warnings: Option<u16>,
     info: Option<String>,
