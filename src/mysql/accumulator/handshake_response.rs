@@ -4,7 +4,6 @@ use crate::mysql::packet::Packet;
 use crate::mysql::types::{
     Converter, IntFixedLen, IntLenEnc, StringFixedLen, StringLenEnc, StringNullEnc,
 };
-use std::any::Any;
 use std::collections::HashMap;
 
 const FILLER: &str = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";

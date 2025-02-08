@@ -3,7 +3,6 @@ use crate::mysql::accumulator::CapabilityFlags;
 use crate::mysql::accumulator::{AccumulationDelta, Accumulator};
 use crate::mysql::packet::Packet;
 use crate::mysql::types::{Converter, IntFixedLen, StringFixedLen, StringNullEnc};
-use std::any::Any;
 use std::cmp::max;
 
 const RESERVED_STRING: &str = "\0\0\0\0\0\0\0\0\0\0";

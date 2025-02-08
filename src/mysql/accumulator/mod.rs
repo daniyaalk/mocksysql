@@ -1,6 +1,5 @@
 use crate::connection::{Connection, Phase};
 use crate::mysql::packet::Packet;
-use std::any::Any;
 
 pub mod auth_complete;
 pub mod auth_init;
