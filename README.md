@@ -19,3 +19,4 @@ I hope to get these features implemented, but I may decide not to as well:
 
 * Binary Protocol
 * TLS
+* Multiple Resultset queries (partially supported)
