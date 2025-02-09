@@ -19,6 +19,8 @@ I hope to get these features implemented, but I may decide not to as well:
 
 * Binary Protocol
 * TLS
-    * As an extension,authentication methods that require encryption are not supported
+    * As an extension, authentication methods that require encryption are not supported
 * Multiple Resultset queries (partially supported)
 * Client protocol < 4.1 (Not tested)
+* Multifactor authentication
+* Compression
