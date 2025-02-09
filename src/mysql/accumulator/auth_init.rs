@@ -14,11 +14,13 @@ impl Accumulator for AuthInitAccumulator {
         // https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_connection_phase_packets_protocol_auth_switch_request.html
         if packet.body[0] == 0xfe {
             self.accumulation_complete = true;
-            AuthSwitchRequestAccumulator::default().consume(packet, connection)
-        } else {
+            return AuthSwitchRequestAccumulator::default().consume(packet, connection);
+        } else if packet.body[0] == 0x00 {
             // AuthSwitch is not required if the credentials sent in HandshakeResponse were sufficient.
-            AuthCompleteAccumulator::default().consume(packet, connection)
+            return AuthCompleteAccumulator::default().consume(packet, connection);
         }
+
+        Phase::AuthInit
     }
 
     fn accumulation_complete(&self) -> bool {
