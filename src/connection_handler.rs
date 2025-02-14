@@ -5,6 +5,8 @@ use crate::{
     connection::{Connection, Direction},
     state_handler,
 };
+use rcgen::{generate_simple_self_signed, CertifiedKey};
+use rustls::pki_types::PrivateKeyDer;
 use std::sync::atomic::AtomicU8;
 use std::{
     env,
@@ -26,15 +28,21 @@ fn exchange(
     loop {
         let mut buf: [u8; 4096] = [0; 4096];
 
+        let current_phase = { connection.lock().unwrap().phase.clone() };
+        if current_phase == Phase::TlsExchange {
+            handle_tls(
+                connection.clone(),
+                &mut from.try_clone()?,
+                &mut to.try_clone()?,
+                &mut buf,
+                &direction,
+            );
+        }
+
         let read_bytes = from.read(&mut buf).expect("its joever");
 
         if read_bytes == 0 {
             break;
-        }
-
-        let current_phase = { connection.lock().unwrap().phase.clone() };
-        if current_phase == Phase::TlsExchange {
-            handle_tls(connection.clone(), from.try_clone()?, &mut buf, &direction);
         }
 
         let packets = state_handler::process_incoming_frame(&buf, &connection, &direction);
@@ -69,12 +77,27 @@ fn exchange(
 
 fn handle_tls(
     connection: Arc<Mutex<Connection>>,
-    from: TcpStream,
+    from: &mut TcpStream,
+    to: &mut TcpStream,
     buf: &mut [u8; 4096],
     direction: &Direction,
 ) {
     let mut connection = connection.lock().unwrap();
     connection.phase = Phase::HandshakeResponse;
+
+    let CertifiedKey { cert, key_pair } =
+        generate_simple_self_signed(vec!["localhost".to_owned()]).unwrap();
+    let server_config = rustls::ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(
+            vec![cert.der().clone()],
+            PrivateKeyDer::Pkcs8(key_pair.serialize_der().into()),
+        )
+        .unwrap();
+    let server_config = Arc::new(server_config);
+    let mut server = rustls::ServerConnection::new(server_config).unwrap();
+    server.complete_io(from).expect("Handshake Error");
+    println!("TLS handshake complete");
 }
 
 fn get_write_response(
@@ -115,7 +138,7 @@ pub fn initiate(client: TcpStream) {
     let connection: Arc<Mutex<Connection>> = Arc::new(Mutex::new(Connection::default()));
     let connection2 = Arc::clone(&connection);
 
-    let target_address: &str = "127.0.0.1:3307";
+    let target_address: &str = "127.0.0.1:3407";
     let client_address = client.peer_addr().unwrap();
 
     let server = TcpStream::connect(target_address).expect("Fault");
