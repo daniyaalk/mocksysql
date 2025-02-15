@@ -1,6 +1,8 @@
+use crate::mysql::accumulator::handshake::HandshakeAccumulator;
 use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
 use crate::mysql::accumulator::result_set::ResponseAccumulator;
 use crate::mysql::command::Command;
+use rustls::{ClientConnection, ServerConnection};
 
 #[allow(dead_code)]
 #[derive(Default)]
@@ -9,8 +11,12 @@ pub struct Connection {
     pub partial_bytes: Option<Vec<u8>>,
     pub last_command: Option<Command>,
 
-    pub handshake: Option<crate::mysql::accumulator::handshake::HandshakeAccumulator>,
+    pub handshake: Option<HandshakeAccumulator>,
     pub handshake_response: Option<HandshakeResponseAccumulator>,
+
+    pub client_connection: Option<ServerConnection>,
+    pub server_connection: Option<ClientConnection>,
+
     query_response: ResponseAccumulator,
 }
 

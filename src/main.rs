@@ -4,6 +4,7 @@ mod connection;
 mod connection_handler;
 mod mysql;
 mod state_handler;
+mod tls;
 mod util;
 
 fn main() {
