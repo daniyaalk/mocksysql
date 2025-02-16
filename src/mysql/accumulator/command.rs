@@ -4,7 +4,6 @@ use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags}
 use crate::mysql::command::{Command, MySqlCommand};
 use crate::mysql::packet::Packet;
 use crate::mysql::types::{Converter, IntLenEnc};
-use std::io::{Read, Write};
 
 #[derive(Debug, Clone, Default)]
 pub struct CommandAccumulator {
@@ -25,11 +24,7 @@ struct Param {
 }
 
 impl Accumulator for CommandAccumulator {
-    fn consume<RWS: Read + Write + Sized>(
-        &mut self,
-        packet: &Packet,
-        connection: &Connection<RWS>,
-    ) -> Phase {
+    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
         let mut offset = 0;
         let body = &packet.body;
 

@@ -21,11 +21,7 @@ pub struct ResponseAccumulator {
 }
 
 impl Accumulator for ResponseAccumulator {
-    fn consume<RWS: Read + Write + Sized>(
-        &mut self,
-        packet: &Packet,
-        connection: &Connection<RWS>,
-    ) -> Phase {
+    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
         let mut next_phase = connection.phase.clone();
 
         if connection.get_last_command().is_none() {

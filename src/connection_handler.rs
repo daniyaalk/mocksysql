@@ -1,4 +1,4 @@
-use crate::connection::Phase;
+use crate::connection::{ClientConnectionType, Phase, ServerConnectionType};
 use crate::mysql::command::{Command, MySqlCommand};
 use crate::mysql::packet::{OkData, Packet, PacketType};
 use crate::tls::{handle_client_tls, handle_server_tls};
@@ -27,7 +27,7 @@ static SERVER_TRANSITION_PHASES: LazyLock<HashSet<Phase>> = LazyLock::new(|| {
 static CLIENT_TRANSITION_PHASES: LazyLock<HashSet<Phase>> =
     LazyLock::new(|| HashSet::from([Phase::AuthInit, Phase::PendingResponse, Phase::AuthComplete]));
 
-fn exchange<RWS: Read + Write + Sized>(mut connection: Connection<RWS>) -> Result<(), Error> {
+fn exchange(mut connection: Connection) -> Result<(), Error> {
     let mut buf: [u8; 4096];
 
     loop {
@@ -37,7 +37,7 @@ fn exchange<RWS: Read + Write + Sized>(mut connection: Connection<RWS>) -> Resul
 
             println!("Listening from server");
             let read_bytes = connection
-                .server_connection
+                .server_connection.
                 .read(&mut buf)
                 .expect("its joever");
 
@@ -65,13 +65,14 @@ fn exchange<RWS: Read + Write + Sized>(mut connection: Connection<RWS>) -> Resul
         loop {
             buf = [0; 4096]; // Due to a poor design choice in state_handler.rs
             if connection.phase == Phase::TlsExchange {
-                let server_tls = handle_server_tls(&mut connection.server_connection, &mut buf);
-                let client_tls = handle_client_tls(&mut connection.client_connection, &mut buf);
+                let server_tls = handle_server_tls(&mut buf);
+                let client_tls = handle_client_tls(&mut buf);
 
                 let server_connection = StreamOwned::new(server_tls, connection.server_connection);
                 let client_connection = StreamOwned::new(client_tls, connection.client_connection);
 
-                connection = connection.switch_connections(server_connection, client_connection);
+                connection = connection
+                    .switch_connections(ServerConnectionType::Tls(server_connection), Box::new(client_connection));
 
                 connection.phase = Phase::HandshakeResponse;
                 println!("TLS Set");
@@ -105,6 +106,13 @@ fn exchange<RWS: Read + Write + Sized>(mut connection: Connection<RWS>) -> Resul
     }
 
     Ok(())
+}
+
+pub fn read_bytes(stream: ServerConnectionType, buf: &mut [u8]) -> Result<usize, Error> {
+    match stream {
+        ServerConnectionType::Plain(mut stream) => stream.read(buf),
+        ServerConnectionType::Tls(mut stream) => {stream.read(buf)}
+    }
 }
 
 fn get_write_response(
@@ -146,7 +154,10 @@ pub fn initiate(client: TcpStream) {
 
     let server = TcpStream::connect(target_address).expect("Fault");
 
-    let connection = Connection::new(server, client);
+    let connection = Connection::new(
+        ServerConnectionType::Plain(server),
+        ClientConnectionType::Plain(client),
+    );
 
     let worker = thread::spawn(move || exchange(connection));
 

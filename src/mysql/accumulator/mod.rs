@@ -42,11 +42,7 @@ pub struct AccumulationDelta {
 /// Returns true if no the accumulator expects no further packets (e.g, on the last packet
 /// of a ResultSet).
 pub trait Accumulator {
-    fn consume<RWS: Read + Write + Sized>(
-        &mut self,
-        packet: &Packet,
-        connection: &Connection<RWS>,
-    ) -> Phase;
+    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase;
 
     fn accumulation_complete(&self) -> bool;
 

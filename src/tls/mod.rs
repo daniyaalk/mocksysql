@@ -2,7 +2,6 @@ use rcgen::{generate_simple_self_signed, CertifiedKey};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, IpAddr, Ipv4Addr, PrivateKeyDer, ServerName, UnixTime};
 use rustls::{ClientConnection, DigitallySignedStruct, Error, ServerConnection, SignatureScheme};
-use std::io::{Read, Write};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -57,10 +56,7 @@ impl ServerCertVerifier for NoCertificateVerification {
     }
 }
 
-pub fn handle_client_tls<RWS: Read + Write + Sized>(
-    stream: &mut RWS,
-    buf: &mut [u8; 4096],
-) -> ServerConnection {
+pub fn handle_client_tls(buf: &mut [u8; 4096]) -> ServerConnection {
     let CertifiedKey { cert, key_pair } =
         generate_simple_self_signed(vec!["localhost".to_owned()]).unwrap();
     let server_config = rustls::ServerConfig::builder()
@@ -79,10 +75,7 @@ pub fn handle_client_tls<RWS: Read + Write + Sized>(
     server
 }
 
-pub fn handle_server_tls<RWS: Read + Write + Sized>(
-    stream: &mut RWS,
-    buf: &mut [u8; 4096],
-) -> ClientConnection {
+pub fn handle_server_tls(buf: &mut [u8; 4096]) -> ClientConnection {
     let client_config = rustls::ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(NoCertificateVerification))

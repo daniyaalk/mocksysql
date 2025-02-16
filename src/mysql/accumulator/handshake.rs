@@ -30,11 +30,7 @@ pub struct HandshakeAccumulator {
 }
 
 impl Accumulator for HandshakeAccumulator {
-    fn consume<RWS: Read + Write + Sized>(
-        &mut self,
-        packet: &Packet,
-        _connection: &Connection<RWS>,
-    ) -> Phase {
+    fn consume(&mut self, packet: &Packet, _connection: &Connection) -> Phase {
         let mut offset: usize = 0;
 
         let protocol_version = {

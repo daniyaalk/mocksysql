@@ -2,7 +2,6 @@ use crate::connection::{Connection, Phase};
 use crate::mysql::accumulator::Accumulator;
 use crate::mysql::packet::Packet;
 use crate::mysql::types::{Converter, IntFixedLen, StringEOFEnc, StringNullEnc};
-use std::io::{Read, Write};
 
 #[derive(Debug, Default)]
 pub struct AuthSwitchRequestAccumulator {
@@ -13,11 +12,7 @@ pub struct AuthSwitchRequestAccumulator {
 }
 
 impl Accumulator for AuthSwitchRequestAccumulator {
-    fn consume<RWS: Read + Write + Sized>(
-        &mut self,
-        packet: &Packet,
-        _connection: &Connection<RWS>,
-    ) -> Phase {
+    fn consume(&mut self, packet: &Packet, _connection: &Connection) -> Phase {
         let mut offset: usize = 0;
 
         let status_tag = {

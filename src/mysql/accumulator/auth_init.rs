@@ -3,7 +3,6 @@ use crate::mysql::accumulator::auth_switch_request::AuthSwitchRequestAccumulator
 use crate::mysql::accumulator::{auth_complete, Accumulator};
 use crate::mysql::packet::Packet;
 use auth_complete::AuthCompleteAccumulator;
-use std::io::{Read, Write};
 
 #[derive(Debug, Clone, Default)]
 pub struct AuthInitAccumulator {
@@ -11,11 +10,7 @@ pub struct AuthInitAccumulator {
 }
 
 impl Accumulator for AuthInitAccumulator {
-    fn consume<RWS: Read + Write + Sized>(
-        &mut self,
-        packet: &Packet,
-        connection: &Connection<RWS>,
-    ) -> Phase {
+    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
         // https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_connection_phase_packets_protocol_auth_switch_request.html
         if packet.body[0] == 0xfe {
             self.accumulation_complete = true;

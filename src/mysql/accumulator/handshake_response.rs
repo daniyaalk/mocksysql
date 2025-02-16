@@ -29,11 +29,7 @@ pub struct HandshakeResponseAccumulator {
 }
 
 impl Accumulator for HandshakeResponseAccumulator {
-    fn consume<RWS: Read + Write + Sized>(
-        &mut self,
-        packet: &Packet,
-        _connection: &Connection<RWS>,
-    ) -> Phase {
+    fn consume(&mut self, packet: &Packet, _connection: &Connection) -> Phase {
         let mut offset: usize = 0;
 
         let client_flag = {
