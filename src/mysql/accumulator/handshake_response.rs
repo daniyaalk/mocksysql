@@ -1,10 +1,9 @@
-use crate::connection::{Connection, Phase};
+use crate::connection::{Connection, Phase, SwitchableConnection};
 use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags};
 use crate::mysql::packet::Packet;
 use crate::mysql::types::{
     Converter, IntFixedLen, IntLenEnc, StringFixedLen, StringLenEnc, StringNullEnc,
 };
-use std::any::Any;
 use std::collections::HashMap;
 
 const FILLER: &str = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
@@ -29,7 +28,7 @@ pub struct HandshakeResponseAccumulator {
 }
 
 impl Accumulator for HandshakeResponseAccumulator {
-    fn consume(&mut self, packet: &Packet, _connection: &Connection) -> Phase {
+    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
         let mut offset: usize = 0;
 
         let client_flag = {
@@ -58,6 +57,21 @@ impl Accumulator for HandshakeResponseAccumulator {
             assert!(FILLER.eq(&result.result));
             result.result
         };
+
+        if let SwitchableConnection::Plain(_) = &connection.client_connection {
+            if CapabilityFlags::ClientSsl as u32 & client_flag != 0 {
+                self.accumulation_complete = true;
+
+                self.client_flag = client_flag;
+                self.max_packet_size = max_packet_size;
+                self.character_set = character_set;
+                self.filler = filler;
+
+                assert_eq!(packet.body.len(), offset);
+                return Phase::TlsExchange;
+            }
+        }
+
         let username = {
             let result = StringNullEnc::from_bytes(&packet.body[offset..].to_vec(), None);
             offset += result.offset_increment;
@@ -164,10 +178,6 @@ impl Accumulator for HandshakeResponseAccumulator {
 
     fn accumulation_complete(&self) -> bool {
         self.accumulation_complete
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
     }
 
     fn get_accumulation_delta(&self) -> Option<AccumulationDelta> {

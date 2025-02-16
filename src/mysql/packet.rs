@@ -68,7 +68,6 @@ impl Packet {
         })
     }
 
-    #[allow(dead_code)]
     pub fn to_bytes(self) -> Vec<u8> {
         let mut ret: Vec<u8> = Vec::new();
 
@@ -107,8 +106,11 @@ impl Packet {
 
 #[derive(Debug, Clone)]
 pub struct ErrorData {
+    #[allow(dead_code)]
     pub error_code: u16,
+    #[allow(dead_code)]
     pub sql_state: Option<SQLState>,
+    #[allow(dead_code)]
     pub error_message: String,
 }
 
@@ -166,39 +168,52 @@ fn get_sql_state(packet: &Packet, connection: &Connection, offset: &usize) -> Op
 
 #[derive(Debug, Clone)]
 pub struct SQLState {
+    #[allow(dead_code)]
     state_marker: String,
+    #[allow(dead_code)]
     state: String,
 }
 
 #[derive(Debug)]
 pub struct SessionState {
+    #[allow(dead_code)]
     type_: u8,
+    #[allow(dead_code)]
     data: String,
 }
 
 #[repr(u16)]
 pub enum ServerStatusFlags {
     ServerMoreResultsExist = 0x08,
+    #[allow(dead_code)]
     ServerSessionStateChanged = 0x01 << 14,
 }
 
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct OkData {
-    affected_rows: u128,
-    last_insert_id: u128,
+    pub header: u8,
+    pub affected_rows: u64,
+    pub last_insert_id: u64,
     pub status_flags: Option<u16>,
-    warnings: Option<u16>,
-    info: Option<String>,
-    session_state_info: Option<SessionState>,
+    pub warnings: Option<u16>,
+    pub info: Option<String>,
+    pub session_state_info: Option<SessionState>,
 }
 
 impl OkData {
     pub fn from_packet(packet: &Packet, connection: &Connection) -> OkData {
         assert_eq!(packet.p_type, PacketType::Ok);
 
-        let mut offset = 1;
+        let mut offset = 0;
         let body = &packet.body;
+
+        let header = {
+            let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(1));
+            assert!(result.result == 0x00 || result.result == 0xFE);
+            offset += result.offset_increment;
+            result.result as u8
+        };
 
         let affected_rows = {
             let result = IntLenEnc::from_bytes(&body[offset..].to_vec(), None);
@@ -239,7 +254,7 @@ impl OkData {
             })
         }
 
-        let mut info = None;
+        let info = None;
         if connection.get_handshake_response().unwrap().client_flag
             & CapabilityFlags::ClientSessionTrack as u32
             != 0
@@ -256,12 +271,41 @@ impl OkData {
         }
 
         OkData {
+            header,
             affected_rows,
             last_insert_id,
             status_flags,
             warnings,
             info,
             session_state_info: None,
+        }
+    }
+
+    pub fn to_packet(&self, sequence: u8, client_flag: u32) -> Packet {
+        let mut body: Vec<u8> = Vec::new();
+
+        body.push(self.header);
+        body.extend(IntLenEnc::encode(self.affected_rows, None));
+        body.extend(IntLenEnc::encode(self.last_insert_id, None));
+
+        if client_flag & CapabilityFlags::ClientProtocol41 as u32 != 0 {
+            body.extend(self.status_flags.unwrap_or(0).to_ne_bytes());
+            body.extend(self.warnings.unwrap_or(0).to_ne_bytes());
+        } else if client_flag & CapabilityFlags::ClientTransactions as u32 != 0 {
+            body.extend(self.status_flags.unwrap().to_le_bytes());
+        }
+
+        if client_flag & CapabilityFlags::ClientSessionTrack as u32 != 0 {
+            // TODO: Add session track data
+        }
+
+        Packet {
+            header: PacketHeader {
+                size: body.len(),
+                seq: sequence,
+            },
+            body,
+            p_type: PacketType::Ok,
         }
     }
 }

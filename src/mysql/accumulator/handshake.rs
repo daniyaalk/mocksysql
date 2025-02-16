@@ -3,7 +3,6 @@ use crate::mysql::accumulator::CapabilityFlags;
 use crate::mysql::accumulator::{AccumulationDelta, Accumulator};
 use crate::mysql::packet::Packet;
 use crate::mysql::types::{Converter, IntFixedLen, StringFixedLen, StringNullEnc};
-use std::any::Any;
 use std::cmp::max;
 
 const RESERVED_STRING: &str = "\0\0\0\0\0\0\0\0\0\0";
@@ -154,10 +153,6 @@ impl Accumulator for HandshakeAccumulator {
 
     fn accumulation_complete(&self) -> bool {
         self.accumulation_complete
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
     }
 
     fn get_accumulation_delta(&self) -> Option<AccumulationDelta> {

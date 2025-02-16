@@ -1,6 +1,5 @@
 use crate::connection::{Connection, Phase};
 use crate::mysql::packet::Packet;
-use std::any::Any;
 
 pub mod auth_complete;
 pub mod auth_init;
@@ -16,6 +15,7 @@ pub enum CapabilityFlags {
     #[allow(dead_code)]
     ClientLongPassword = 0x01,
     ClientConnectWithDB = 0x08,
+    ClientSsl = 2048,
     ClientTransactions = 8192,
     ClientProtocol41 = 0x01 << 9,
     ClientPluginAuth = 0x01 << 19,
@@ -28,6 +28,7 @@ pub enum CapabilityFlags {
     ClientQueryAttributes = 0x01 << 27,
 }
 
+// FIXME: correct this ugly abomination
 #[derive(Default)]
 pub struct AccumulationDelta {
     pub handshake: Option<handshake::HandshakeAccumulator>,
@@ -39,12 +40,10 @@ pub struct AccumulationDelta {
 /// Consumes a given packet and returns the phase to transition the connection into.
 /// Returns true if no the accumulator expects no further packets (e.g, on the last packet
 /// of a ResultSet).
-pub trait Accumulator: Any {
+pub trait Accumulator {
     fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase;
 
     fn accumulation_complete(&self) -> bool;
-
-    fn as_any(&self) -> &dyn Any;
 
     fn get_accumulation_delta(&self) -> Option<AccumulationDelta> {
         None

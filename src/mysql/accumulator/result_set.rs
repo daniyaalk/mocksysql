@@ -3,7 +3,6 @@ use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags}
 use crate::mysql::command::MySqlCommand;
 use crate::mysql::packet::{EofData, ErrorData, OkData, Packet, PacketType, ServerStatusFlags};
 use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringLenEnc};
-use std::any::Any;
 
 #[derive(Debug, Default, Clone)]
 pub struct ResponseAccumulator {
@@ -129,10 +128,6 @@ impl Accumulator for ResponseAccumulator {
         true
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn get_accumulation_delta(&self) -> Option<AccumulationDelta> {
         Some(AccumulationDelta {
             response: Some(self.clone()), // yuck
@@ -162,7 +157,7 @@ struct ColumnDefinition {
     org_table: String,
     name: String,
     org_name: String,
-    fixed_length_fields: u128,
+    fixed_length_fields: u64,
     character_set: u16,
     column_length: u32,
     field_type: FieldTypes,

@@ -1,20 +1,47 @@
+use crate::mysql::accumulator::handshake::HandshakeAccumulator;
 use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
 use crate::mysql::accumulator::result_set::ResponseAccumulator;
 use crate::mysql::command::Command;
+#[cfg(feature = "tls")]
+use rustls::{ClientConnection, ServerConnection, StreamOwned};
+use std::cell::RefCell;
+use std::net::TcpStream;
 
 #[allow(dead_code)]
-#[derive(Default)]
+// #[derive(Debug)]
 pub struct Connection {
     pub phase: Phase,
     pub partial_bytes: Option<Vec<u8>>,
     pub last_command: Option<Command>,
 
-    pub handshake: Option<crate::mysql::accumulator::handshake::HandshakeAccumulator>,
+    pub handshake: Option<HandshakeAccumulator>,
     pub handshake_response: Option<HandshakeResponseAccumulator>,
+
+    pub client_connection: SwitchableConnection,
+    pub server_connection: SwitchableConnection,
+
     query_response: ResponseAccumulator,
 }
 
 impl Connection {
+    pub fn new(server: SwitchableConnection, client: SwitchableConnection) -> Connection {
+        Connection {
+            client_connection: client,
+            server_connection: server,
+            phase: Phase::Handshake,
+            partial_bytes: None,
+            last_command: None,
+            handshake: None,
+            handshake_response: None,
+            query_response: ResponseAccumulator::default(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn default() -> Connection {
+        Connection::new(SwitchableConnection::None, SwitchableConnection::None)
+    }
+
     pub fn get_state(&self) -> &Phase {
         &self.phase
     }
@@ -48,12 +75,13 @@ impl Connection {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]
+#[derive(Hash)]
 pub enum Phase {
-    #[default]
     Handshake,
     HandshakeResponse,
+    TlsExchange,
     AuthInit,
     AuthSwitchResponse,
     AuthFailed,
@@ -63,8 +91,21 @@ pub enum Phase {
     PendingResponse,
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Direction {
-    C2S,
-    S2C,
+#[derive(Debug)]
+pub enum SwitchableConnection {
+    Plain(RefCell<TcpStream>),
+    #[cfg(feature = "tls")]
+    ClientTls(RefCell<StreamOwned<ServerConnection, TcpStream>>),
+    #[cfg(feature = "tls")]
+    ServerTls(RefCell<StreamOwned<ClientConnection, TcpStream>>),
+    #[cfg(test)]
+    None,
+}
+impl SwitchableConnection {
+    pub fn take(self) -> TcpStream {
+        match self {
+            SwitchableConnection::Plain(stream) => stream.into_inner(),
+            _ => panic!("SwitchableConnection::take() called on a non-PlainConnection"),
+        }
+    }
 }

@@ -18,5 +18,7 @@ I hope to get these features implemented, but I may decide not to as well:
 ## Not supported:
 
 * Binary Protocol
-* TLS
 * Multiple Resultset queries (partially supported)
+* Client protocol < 4.1 (Not tested)
+* Multifactor authentication
+* Compression
