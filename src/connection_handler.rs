@@ -1,8 +1,10 @@
 use crate::connection::{Phase, SwitchableConnection};
 use crate::mysql::command::{Command, MySqlCommand};
 use crate::mysql::packet::{OkData, Packet, PacketType};
+#[cfg(feature = "tls")]
 use crate::tls::{handle_client_tls, handle_server_tls};
 use crate::{connection::Connection, state_handler};
+#[cfg(feature = "tls")]
 use rustls::StreamOwned;
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -75,6 +77,8 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
         // client loop
         loop {
             buf = [0; 4096]; // Due to a poor design choice in state_handler.rs
+
+            #[cfg(feature = "tls")]
             if connection.phase == Phase::TlsExchange {
                 connection = switch_to_tls(connection);
             }
@@ -106,6 +110,7 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
     }
 }
 
+#[cfg(feature = "tls")]
 fn switch_to_tls(mut connection: Connection) -> Connection {
     let server_tls = handle_server_tls();
     let client_tls = handle_client_tls();
@@ -129,7 +134,9 @@ fn switch_to_tls(mut connection: Connection) -> Connection {
 pub fn read_bytes(conn: &mut SwitchableConnection, buf: &mut [u8]) -> Result<usize, Error> {
     match conn {
         SwitchableConnection::Plain(stream) => stream.get_mut().read(buf),
+        #[cfg(feature = "tls")]
         SwitchableConnection::ClientTls(stream_owned) => stream_owned.get_mut().read(buf),
+        #[cfg(feature = "tls")]
         SwitchableConnection::ServerTls(stream_owned) => stream_owned.get_mut().read(buf),
         #[cfg(test)]
         SwitchableConnection::None => unreachable!(),
@@ -139,7 +146,9 @@ pub fn read_bytes(conn: &mut SwitchableConnection, buf: &mut [u8]) -> Result<usi
 pub fn write_bytes(conn: &mut SwitchableConnection, buf: &[u8]) {
     match conn {
         SwitchableConnection::Plain(stream) => stream.get_mut().write_all(buf),
+        #[cfg(feature = "tls")]
         SwitchableConnection::ClientTls(stream_owned) => stream_owned.get_mut().write_all(buf),
+        #[cfg(feature = "tls")]
         SwitchableConnection::ServerTls(stream_owned) => stream_owned.get_mut().write_all(buf),
         #[cfg(test)]
         SwitchableConnection::None => unreachable!(),

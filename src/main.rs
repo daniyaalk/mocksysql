@@ -4,6 +4,7 @@ mod connection;
 mod connection_handler;
 mod mysql;
 mod state_handler;
+#[cfg(feature = "tls")]
 mod tls;
 mod util;
 

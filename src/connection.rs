@@ -2,6 +2,7 @@ use crate::mysql::accumulator::handshake::HandshakeAccumulator;
 use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
 use crate::mysql::accumulator::result_set::ResponseAccumulator;
 use crate::mysql::command::Command;
+#[cfg(feature = "tls")]
 use rustls::{ClientConnection, ServerConnection, StreamOwned};
 use std::cell::RefCell;
 use std::net::TcpStream;
@@ -93,7 +94,9 @@ pub enum Phase {
 #[derive(Debug)]
 pub enum SwitchableConnection {
     Plain(RefCell<TcpStream>),
+    #[cfg(feature = "tls")]
     ClientTls(RefCell<StreamOwned<ServerConnection, TcpStream>>),
+    #[cfg(feature = "tls")]
     ServerTls(RefCell<StreamOwned<ClientConnection, TcpStream>>),
     #[cfg(test)]
     None,
