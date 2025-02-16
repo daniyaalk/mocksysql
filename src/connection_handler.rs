@@ -22,7 +22,6 @@ static SERVER_TRANSITION_PHASES: LazyLock<HashSet<Phase>> = LazyLock::new(|| {
     HashSet::from([
         Phase::HandshakeResponse,
         Phase::Command,
-        Phase::AuthComplete,
         Phase::AuthSwitchResponse,
     ])
 });
@@ -31,7 +30,7 @@ static CLIENT_TRANSITION_PHASES: LazyLock<HashSet<Phase>> =
     LazyLock::new(|| HashSet::from([Phase::AuthInit, Phase::PendingResponse, Phase::AuthComplete]));
 
 pub fn initiate(client: TcpStream) {
-    let target_address: &str = "127.0.0.1:3307";
+    let target_address: &str = "127.0.0.1:3407";
 
     let server = TcpStream::connect(target_address).expect("Fault");
 
@@ -65,6 +64,10 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
             }
 
             packets = state_handler::process_incoming_frame(&buf, &mut connection);
+
+            if connection.phase == Phase::AuthSwitchResponse {
+                println!("here");
+            }
 
             write_bytes(&mut connection.client_connection, &buf[..read_bytes]);
 

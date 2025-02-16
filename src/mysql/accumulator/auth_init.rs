@@ -20,7 +20,12 @@ impl Accumulator for AuthInitAccumulator {
             return AuthCompleteAccumulator::default().consume(packet, connection);
         } else if packet.body[0] == 0x01 {
             // AuthMoreData
-            return Phase::AuthSwitchResponse;
+
+            match packet.body.get(1) {
+                Some(0x03) => return Phase::AuthComplete,
+                Some(0x04) => return Phase::AuthSwitchResponse,
+                _ => panic!("Unhandled authentication flow!"),
+            }
         }
 
         Phase::AuthInit

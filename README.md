@@ -19,6 +19,18 @@ I hope to get these features implemented, but I may decide not to as well:
 
 * Binary Protocol
 * Multiple Resultset queries (partially supported)
+* Parameterized queries
 * Client protocol < 4.1 (Not tested)
 * Multifactor authentication
 * Compression
+
+## Supported:
+
+* TLS (As an optional feature)
+* Intercept insert queries by setting environment variable `INTERCEPT_INSERT=true`
+    * Last Insert ID as part of query response will be returned by an atomic counter starting from 100.
+
+## Roadmap:
+
+* Intercept updates.
+* Parameterized Queries

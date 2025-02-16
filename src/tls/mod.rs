@@ -1,7 +1,7 @@
 use rcgen::{generate_simple_self_signed, CertifiedKey};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, IpAddr, Ipv4Addr, PrivateKeyDer, ServerName, UnixTime};
-use rustls::{ClientConnection, DigitallySignedStruct, Error, ServerConnection, SignatureScheme};
+use rustls::{DigitallySignedStruct, Error, SignatureScheme};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -56,7 +56,7 @@ impl ServerCertVerifier for NoCertificateVerification {
     }
 }
 
-pub fn handle_client_tls() -> ServerConnection {
+pub fn handle_client_tls() -> rustls::ServerConnection {
     let CertifiedKey { cert, key_pair } =
         generate_simple_self_signed(vec!["localhost".to_owned()]).unwrap();
     let server_config = rustls::ServerConfig::builder()
@@ -67,12 +67,11 @@ pub fn handle_client_tls() -> ServerConnection {
         )
         .unwrap();
     let server_config = Arc::new(server_config);
-    let server = rustls::ServerConnection::new(server_config).unwrap();
-
-    server
+    println!("Client tls done!");
+    rustls::ServerConnection::new(server_config).unwrap()
 }
 
-pub fn handle_server_tls() -> ClientConnection {
+pub fn handle_server_tls() -> rustls::ClientConnection {
     let client_config = rustls::ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(NoCertificateVerification))
@@ -83,6 +82,6 @@ pub fn handle_server_tls() -> ClientConnection {
         ServerName::IpAddress(IpAddr::V4(Ipv4Addr::try_from("127.0.0.1").unwrap())),
     )
     .unwrap();
-
+    println!("Server tls done!");
     client
 }
