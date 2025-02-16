@@ -21,18 +21,18 @@ impl ServerCertVerifier for NoCertificateVerification {
 
     fn verify_tls12_signature(
         &self,
-        message: &[u8],
-        cert: &CertificateDer<'_>,
-        dss: &DigitallySignedStruct,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &DigitallySignedStruct,
     ) -> Result<HandshakeSignatureValid, Error> {
         Ok(HandshakeSignatureValid::assertion())
     }
 
     fn verify_tls13_signature(
         &self,
-        message: &[u8],
-        cert: &CertificateDer<'_>,
-        dss: &DigitallySignedStruct,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &DigitallySignedStruct,
     ) -> Result<HandshakeSignatureValid, Error> {
         Ok(HandshakeSignatureValid::assertion())
     }
@@ -56,7 +56,7 @@ impl ServerCertVerifier for NoCertificateVerification {
     }
 }
 
-pub fn handle_client_tls(buf: &mut [u8; 4096]) -> ServerConnection {
+pub fn handle_client_tls() -> ServerConnection {
     let CertifiedKey { cert, key_pair } =
         generate_simple_self_signed(vec!["localhost".to_owned()]).unwrap();
     let server_config = rustls::ServerConfig::builder()
@@ -68,14 +68,11 @@ pub fn handle_client_tls(buf: &mut [u8; 4096]) -> ServerConnection {
         .unwrap();
     let server_config = Arc::new(server_config);
     let server = rustls::ServerConnection::new(server_config).unwrap();
-    // server
-    //     .complete_io(stream)
-    //     .expect("Unable to initiate TLS connection with server!");
 
     server
 }
 
-pub fn handle_server_tls(buf: &mut [u8; 4096]) -> ClientConnection {
+pub fn handle_server_tls() -> ClientConnection {
     let client_config = rustls::ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(NoCertificateVerification))
@@ -86,11 +83,6 @@ pub fn handle_server_tls(buf: &mut [u8; 4096]) -> ClientConnection {
         ServerName::IpAddress(IpAddr::V4(Ipv4Addr::try_from("127.0.0.1").unwrap())),
     )
     .unwrap();
-    // let a = client.complete_io(stream);
-
-    // if a.is_err() {
-    //     println!("TLS handshake failure: {:?}", a.err().unwrap());
-    // }
 
     client
 }

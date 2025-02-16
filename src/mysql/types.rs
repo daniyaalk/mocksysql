@@ -8,13 +8,14 @@ pub struct DecodeResult<T> {
 pub trait Converter<T> {
     fn from_bytes(bytes: &Vec<u8>, length: Option<usize>) -> DecodeResult<T>;
 
-    fn encode(value: T, length: Option<usize>) -> Vec<u8> {
+    fn encode(_value: T, _length: Option<usize>) -> Vec<u8> {
         todo!("Not implemented")
     }
 }
 
 pub trait FixedLengthConverter<T> {
     fn from_bytes(bytes: &[u8], length: usize) -> DecodeResult<T>;
+    // TODO: Change implementations to use FixedLength Converter
 }
 
 pub struct IntLenEnc {}

@@ -3,7 +3,6 @@ use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags}
 use crate::mysql::command::MySqlCommand;
 use crate::mysql::packet::{EofData, ErrorData, OkData, Packet, PacketType, ServerStatusFlags};
 use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringLenEnc};
-use std::io::{Read, Write};
 
 #[derive(Debug, Default, Clone)]
 pub struct ResponseAccumulator {

@@ -106,8 +106,11 @@ impl Packet {
 
 #[derive(Debug, Clone)]
 pub struct ErrorData {
+    #[allow(dead_code)]
     pub error_code: u16,
+    #[allow(dead_code)]
     pub sql_state: Option<SQLState>,
+    #[allow(dead_code)]
     pub error_message: String,
 }
 
@@ -165,19 +168,24 @@ fn get_sql_state(packet: &Packet, connection: &Connection, offset: &usize) -> Op
 
 #[derive(Debug, Clone)]
 pub struct SQLState {
+    #[allow(dead_code)]
     state_marker: String,
+    #[allow(dead_code)]
     state: String,
 }
 
 #[derive(Debug)]
 pub struct SessionState {
+    #[allow(dead_code)]
     type_: u8,
+    #[allow(dead_code)]
     data: String,
 }
 
 #[repr(u16)]
 pub enum ServerStatusFlags {
     ServerMoreResultsExist = 0x08,
+    #[allow(dead_code)]
     ServerSessionStateChanged = 0x01 << 14,
 }
 
@@ -246,7 +254,7 @@ impl OkData {
             })
         }
 
-        let mut info = None;
+        let info = None;
         if connection.get_handshake_response().unwrap().client_flag
             & CapabilityFlags::ClientSessionTrack as u32
             != 0

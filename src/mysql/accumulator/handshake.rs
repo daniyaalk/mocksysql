@@ -4,7 +4,6 @@ use crate::mysql::accumulator::{AccumulationDelta, Accumulator};
 use crate::mysql::packet::Packet;
 use crate::mysql::types::{Converter, IntFixedLen, StringFixedLen, StringNullEnc};
 use std::cmp::max;
-use std::io::{Read, Write};
 
 const RESERVED_STRING: &str = "\0\0\0\0\0\0\0\0\0\0";
 const PLUGIN_DATA_MAX_LENGTH: u8 = 21;

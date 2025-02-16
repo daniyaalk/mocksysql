@@ -23,18 +23,6 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn switch_connections(
-        self,
-        server: SwitchableConnection,
-        client: SwitchableConnection,
-    ) -> Connection {
-        Connection {
-            client_connection: client,
-            server_connection: server,
-            ..self
-        }
-    }
-
     pub fn new(server: SwitchableConnection, client: SwitchableConnection) -> Connection {
         Connection {
             client_connection: client,
@@ -95,18 +83,11 @@ pub enum Phase {
     TlsExchange,
     AuthInit,
     AuthSwitchResponse,
-    AuthMoreData,
     AuthFailed,
     AuthComplete,
     Command,
     #[allow(dead_code)]
     PendingResponse,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Direction {
-    C2S,
-    S2C,
 }
 
 #[derive(Debug)]

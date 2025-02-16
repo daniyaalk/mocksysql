@@ -70,7 +70,6 @@ fn get_accumulator(
         Phase::HandshakeResponse => Box::from(HandshakeResponseAccumulator::default()),
         Phase::AuthInit => Box::from(AuthInitAccumulator::default()),
         Phase::AuthSwitchResponse => Box::from(AuthSwitchResponseAccumulator::default()),
-        Phase::AuthMoreData => unreachable!(),
         Phase::AuthFailed => {
             panic!("Untracked state transition, no transmissions should occur after auth failure.");
         }

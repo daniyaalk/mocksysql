@@ -10,16 +10,21 @@ pub struct CommandAccumulator {
     pub command: Option<Command>,
     parameter_count: Option<usize>,
     parameter_set_count: Option<usize>,
+    #[allow(dead_code)]
     null_bitmap: Option<Vec<u8>>,
     new_params_bind_flag: u8,
+    #[allow(dead_code)]
     parameters: Option<Vec<Param>>,
     accumulation_complete: bool,
+    #[allow(dead_code)]
     parameter_values: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, Default)]
 struct Param {
+    #[allow(dead_code)]
     param_type_and_flag: u16,
+    #[allow(dead_code)]
     parameter_name: String,
 }
 
@@ -32,7 +37,6 @@ impl Accumulator for CommandAccumulator {
             // COM_QUERY
 
             offset = 1;
-            let a = connection.get_handshake_response().unwrap().client_flag;
 
             if CapabilityFlags::ClientQueryAttributes as u32
                 & connection.get_handshake_response().unwrap().client_flag

@@ -28,8 +28,24 @@ static SERVER_TRANSITION_PHASES: LazyLock<HashSet<Phase>> = LazyLock::new(|| {
 static CLIENT_TRANSITION_PHASES: LazyLock<HashSet<Phase>> =
     LazyLock::new(|| HashSet::from([Phase::AuthInit, Phase::PendingResponse, Phase::AuthComplete]));
 
+pub fn initiate(client: TcpStream) {
+    let target_address: &str = "127.0.0.1:3307";
+
+    let server = TcpStream::connect(target_address).expect("Fault");
+
+    let connection = Connection::new(
+        SwitchableConnection::Plain(RefCell::new(server)),
+        SwitchableConnection::Plain(RefCell::new(client)),
+    );
+
+    let worker = thread::spawn(move || exchange(connection));
+
+    worker.join().ok();
+}
+
 fn exchange(mut connection: Connection) -> Result<(), Error> {
     let mut buf: [u8; 4096];
+    let mut packets;
 
     loop {
         // Server Loop
@@ -43,12 +59,12 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
             println!("From server: {:?}", &buf[0..read_bytes].to_vec());
 
             if read_bytes == 0 {
-                panic!();
+                return Ok(());
             }
 
-            let packets = state_handler::process_incoming_frame(&buf, &mut connection);
+            packets = state_handler::process_incoming_frame(&buf, &mut connection);
 
-            write_bytes(&mut connection.client_connection, &mut buf[..read_bytes]);
+            write_bytes(&mut connection.client_connection, &buf[..read_bytes]);
 
             if SERVER_TRANSITION_PHASES.contains(&connection.phase) {
                 println!("Transitioning to client");
@@ -57,40 +73,10 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
         }
 
         // client loop
-
         loop {
             buf = [0; 4096]; // Due to a poor design choice in state_handler.rs
             if connection.phase == Phase::TlsExchange {
-                let server_tls = handle_server_tls(&mut buf);
-                let client_tls = handle_client_tls(&mut buf);
-
-                // if let (
-                //     SwitchableConnection::Plain(server_conn),
-                //     SwitchableConnection::Plain(client_conn),
-                // ) = (&connection.server_connection, &connection.client_connection)
-                // {
-                //     let server_tls_conn = StreamOwned::new(server_tls, server_conn..get_mut().try_clone()?);
-                //     let client_tls_conn = StreamOwned::new(client_tls, client_conn.try_clone()?);
-                //
-                //     connection = connection.switch_connections(
-                //         SwitchableConnection::ClientTls(server_tls_conn),
-                //         SwitchableConnection::ServerTls(client_tls_conn),
-                //     );
-                // }
-
-                if let (SwitchableConnection::Plain(_), SwitchableConnection::Plain(_)) =
-                    (&connection.server_connection, &connection.client_connection)
-                {
-                    connection.server_connection = SwitchableConnection::ServerTls(RefCell::new(
-                        StreamOwned::new(server_tls, connection.server_connection.take()),
-                    ));
-                    connection.client_connection = SwitchableConnection::ClientTls(RefCell::new(
-                        StreamOwned::new(client_tls, connection.client_connection.take()),
-                    ));
-                }
-
-                connection.phase = Phase::HandshakeResponse;
-                println!("TLS Set");
+                connection = switch_to_tls(connection);
             }
 
             println!("Listening from client: {:?}", &connection.phase);
@@ -100,12 +86,17 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
             println!("From client: {:?}", &buf[0..read_bytes].to_vec());
 
             if read_bytes == 0 {
-                panic!();
+                return Ok(());
             }
 
-            let packets = state_handler::process_incoming_frame(&buf, &mut connection);
+            packets = state_handler::process_incoming_frame(&buf, &mut connection);
 
-            write_bytes(&mut connection.server_connection, &mut buf[..read_bytes]);
+            if intercept_enabled() && intercept_command(&mut connection, &packets) {
+                // Connection returns to command phase if the query is intercepted, so the client loop needs to be started again.
+                continue;
+            }
+
+            write_bytes(&mut connection.server_connection, &buf[..read_bytes]);
 
             if CLIENT_TRANSITION_PHASES.contains(&connection.phase) {
                 println!("Transitioning to server");
@@ -113,8 +104,26 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
             }
         }
     }
+}
 
-    Ok(())
+fn switch_to_tls(mut connection: Connection) -> Connection {
+    let server_tls = handle_server_tls();
+    let client_tls = handle_client_tls();
+
+    if let (SwitchableConnection::Plain(_), SwitchableConnection::Plain(_)) =
+        (&connection.server_connection, &connection.client_connection)
+    {
+        connection.server_connection = SwitchableConnection::ServerTls(RefCell::new(
+            StreamOwned::new(server_tls, connection.server_connection.take()),
+        ));
+        connection.client_connection = SwitchableConnection::ClientTls(RefCell::new(
+            StreamOwned::new(client_tls, connection.client_connection.take()),
+        ));
+    }
+
+    connection.phase = Phase::HandshakeResponse;
+    println!("TLS Set");
+    connection
 }
 
 pub fn read_bytes(conn: &mut SwitchableConnection, buf: &mut [u8]) -> Result<usize, Error> {
@@ -127,7 +136,7 @@ pub fn read_bytes(conn: &mut SwitchableConnection, buf: &mut [u8]) -> Result<usi
     }
 }
 
-pub fn write_bytes(conn: &mut SwitchableConnection, buf: &mut [u8]) {
+pub fn write_bytes(conn: &mut SwitchableConnection, buf: &[u8]) {
     match conn {
         SwitchableConnection::Plain(stream) => stream.get_mut().write_all(buf),
         SwitchableConnection::ClientTls(stream_owned) => stream_owned.get_mut().write_all(buf),
@@ -139,7 +148,7 @@ pub fn write_bytes(conn: &mut SwitchableConnection, buf: &mut [u8]) {
 }
 
 fn get_write_response(
-    last_command: &Option<Command>,
+    _last_command: &Option<Command>,
     sequence: &u8,
     client_flag: u32,
 ) -> Option<Vec<u8>> {
@@ -172,42 +181,33 @@ fn is_write_query(last_command: &Option<Command>, packet: &Packet) -> bool {
             || last_command_arg.starts_with("delete"))
 }
 
-pub fn initiate(client: TcpStream) {
-    let target_address: &str = "127.0.0.1:3307";
-
-    let server = TcpStream::connect(target_address).expect("Fault");
-
-    let connection = Connection::new(
-        SwitchableConnection::Plain(RefCell::new(server)),
-        SwitchableConnection::Plain(RefCell::new(client)),
-    );
-
-    let worker = thread::spawn(move || exchange(connection));
-
-    worker.join().ok();
-}
-
 fn intercept_enabled() -> bool {
     env::var("INTERCEPT_INSERT").is_ok() && env::var("INTERCEPT_INSERT").unwrap() == "true"
 }
 
-// if intercept_enabled() {
-// let last_command = connection.last_command.clone();
-// let client_flag = connection
-// .handshake_response
-// .as_ref()
-// .map(|hr| hr.client_flag);
-//
-// if packets.len() == 1 && is_write_query(&last_command, packets.first().unwrap()) {
-// if let Some(response) = get_write_response(
-// &last_command,
-// &packets.first().unwrap().header.seq,
-// client_flag.unwrap(),
-// ) {
-// println!("{:?}", response);
-// connection.phase = Phase::Command;
-// from.write_all(&response)?;
-// continue;
-// }
-// }
-// }
+fn intercept_command(connection: &mut Connection, packets: &[Packet]) -> bool {
+    if connection.phase != Phase::PendingResponse {
+        return false;
+    }
+
+    let last_command = connection.last_command.clone();
+    let client_flag = connection
+        .handshake_response
+        .as_ref()
+        .map(|hr| hr.client_flag);
+
+    if packets.len() == 1 && is_write_query(&last_command, packets.first().unwrap()) {
+        if let Some(response) = get_write_response(
+            &last_command,
+            &packets.first().unwrap().header.seq,
+            client_flag.unwrap(),
+        ) {
+            println!("{:?}", response);
+            connection.phase = Phase::Command;
+            write_bytes(&mut connection.client_connection, &response);
+            return true;
+        }
+    }
+
+    false
+}
