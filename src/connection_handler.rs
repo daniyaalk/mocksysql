@@ -36,23 +36,22 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
             buf = [0; 4096]; // Due to a poor design choice in state_handler.rs
 
             println!("Listening from server");
-            let read_bytes = connection
-                .server_connection.
-                .read(&mut buf)
-                .expect("its joever");
+            let (server_connection, read_bytes) =
+                read_server_bytes(connection.server_connection, &mut buf);
+            connection.server_connection = server_connection;
+            let read_bytes = read_bytes?;
 
             println!("From server: {:?}", &buf[0..read_bytes].to_vec());
-            if connection.phase == Phase::AuthInit {
-                println!("Here");
-            }
+
             if read_bytes == 0 {
                 panic!();
-                break;
             }
 
             let packets = state_handler::process_incoming_frame(&buf, &mut connection);
 
-            connection.client_connection.write_all(&buf[..read_bytes])?;
+            let (client_connection, _) =
+                write_client_bytes(connection.client_connection, &buf[..read_bytes]);
+            connection.client_connection = client_connection;
 
             if SERVER_TRANSITION_PHASES.contains(&connection.phase) {
                 println!("Transitioning to client");
@@ -68,35 +67,42 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
                 let server_tls = handle_server_tls(&mut buf);
                 let client_tls = handle_client_tls(&mut buf);
 
-                let server_connection = StreamOwned::new(server_tls, connection.server_connection);
-                let client_connection = StreamOwned::new(client_tls, connection.client_connection);
+                if let (
+                    ServerConnectionType::Plain(server_conn),
+                    ClientConnectionType::Plain(client_conn),
+                ) = (&connection.server_connection, &connection.client_connection)
+                {
+                    let server_tls_conn = StreamOwned::new(server_tls, server_conn.try_clone()?);
+                    let client_tls_conn = StreamOwned::new(client_tls, client_conn.try_clone()?);
 
-                connection = connection
-                    .switch_connections(ServerConnectionType::Tls(server_connection), Box::new(client_connection));
+                    connection = connection.switch_connections(
+                        ServerConnectionType::Tls(server_tls_conn),
+                        ClientConnectionType::Tls(client_tls_conn),
+                    );
+                }
 
                 connection.phase = Phase::HandshakeResponse;
                 println!("TLS Set");
             }
 
             println!("Listening from client: {:?}", &connection.phase);
-            if connection.phase == Phase::AuthSwitchResponse {
-                println!("Here");
-            }
-            let read_bytes = connection
-                .client_connection
-                .read(&mut buf)
-                .expect("its joever");
+
+            let (client_connection, read_bytes) =
+                read_client_bytes(connection.client_connection, &mut buf);
+            connection.client_connection = client_connection;
+            let read_bytes = read_bytes?;
 
             println!("From client: {:?}", &buf[0..read_bytes].to_vec());
 
             if read_bytes == 0 {
                 panic!();
-                break;
             }
 
             let packets = state_handler::process_incoming_frame(&buf, &mut connection);
 
-            connection.server_connection.write_all(&buf[..read_bytes])?;
+            let (server_connection, _) =
+                write_server_bytes(connection.server_connection, &buf[..read_bytes]);
+            connection.server_connection = server_connection;
 
             if CLIENT_TRANSITION_PHASES.contains(&connection.phase) {
                 println!("Transitioning to server");
@@ -108,10 +114,65 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn read_bytes(stream: ServerConnectionType, buf: &mut [u8]) -> Result<usize, Error> {
-    match stream {
-        ServerConnectionType::Plain(mut stream) => stream.read(buf),
-        ServerConnectionType::Tls(mut stream) => {stream.read(buf)}
+pub fn read_server_bytes(
+    mut conn: ServerConnectionType,
+    buf: &mut [u8],
+) -> (ServerConnectionType, Result<usize, Error>) {
+    let result = match &mut conn {
+        ServerConnectionType::Plain(stream) => stream.read(buf),
+        ServerConnectionType::Tls(stream) => stream.read(buf),
+        #[cfg(test)]
+        ServerConnectionType::None => unreachable!(),
+    };
+    (conn, result)
+}
+
+pub fn write_server_bytes(
+    conn: ServerConnectionType,
+    buf: &[u8],
+) -> (ServerConnectionType, std::io::Result<usize>) {
+    match conn {
+        ServerConnectionType::Plain(mut stream) => {
+            let p = stream.write(buf);
+            (ServerConnectionType::Plain(stream), p)
+        }
+        ServerConnectionType::Tls(mut stream) => {
+            let p = stream.write(buf);
+            (ServerConnectionType::Tls(stream), p)
+        }
+        #[cfg(test)]
+        ServerConnectionType::None => unreachable!(),
+    }
+}
+
+pub fn read_client_bytes(
+    mut conn: ClientConnectionType,
+    buf: &mut [u8],
+) -> (ClientConnectionType, Result<usize, Error>) {
+    let result = match &mut conn {
+        ClientConnectionType::Plain(stream) => stream.read(buf),
+        ClientConnectionType::Tls(stream) => stream.read(buf),
+        #[cfg(test)]
+        ClientConnectionType::None => unreachable!(),
+    };
+    (conn, result)
+}
+
+pub fn write_client_bytes(
+    conn: ClientConnectionType,
+    buf: &[u8],
+) -> (ClientConnectionType, std::io::Result<usize>) {
+    match conn {
+        ClientConnectionType::Plain(mut stream) => {
+            let p = stream.write(buf);
+            (ClientConnectionType::Plain(stream), p)
+        }
+        ClientConnectionType::Tls(mut stream) => {
+            let p = stream.write(buf);
+            (ClientConnectionType::Tls(stream), p)
+        }
+        #[cfg(test)]
+        ClientConnectionType::None => unreachable!(),
     }
 }
 
@@ -150,7 +211,7 @@ fn is_write_query(last_command: &Option<Command>, packet: &Packet) -> bool {
 }
 
 pub fn initiate(client: TcpStream) {
-    let target_address: &str = "127.0.0.1:3407";
+    let target_address: &str = "127.0.0.1:3307";
 
     let server = TcpStream::connect(target_address).expect("Fault");
 

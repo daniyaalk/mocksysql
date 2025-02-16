@@ -21,8 +21,8 @@ enum PacketParseResult {
     None,
 }
 
-pub fn process_incoming_frame(buf: &[u8], mut connection: &mut Connection) -> Vec<Packet> {
-    let packets = make_packets(buf, &mut connection);
+pub fn process_incoming_frame(buf: &[u8], connection: &mut Connection) -> Vec<Packet> {
+    let packets = make_packets(buf, connection);
 
     for packet in &packets {
         let mut accumulator = get_accumulator(
@@ -31,9 +31,9 @@ pub fn process_incoming_frame(buf: &[u8], mut connection: &mut Connection) -> Ve
         );
 
         packet_printer::print_packet(packet);
-        connection.phase = accumulator.consume(packet, &connection);
+        connection.phase = accumulator.consume(packet, connection);
 
-        sync_connection_state(&mut connection, accumulator);
+        sync_connection_state(connection, accumulator);
 
         println!("{:?}", connection.get_state());
     }
@@ -70,6 +70,7 @@ fn get_accumulator(
         Phase::HandshakeResponse => Box::from(HandshakeResponseAccumulator::default()),
         Phase::AuthInit => Box::from(AuthInitAccumulator::default()),
         Phase::AuthSwitchResponse => Box::from(AuthSwitchResponseAccumulator::default()),
+        Phase::AuthMoreData => unreachable!(),
         Phase::AuthFailed => {
             panic!("Untracked state transition, no transmissions should occur after auth failure.");
         }
@@ -109,9 +110,9 @@ fn make_packets(buf: &[u8], connection: &mut Connection) -> Vec<Packet> {
 }
 
 fn verify_packet_order(ret: &[Packet], p: &Packet) {
-    if ret.len() > 0 {
+    if !ret.is_empty() {
         let cur_seq = p.header.seq;
-        let prev_seq = ret.get(ret.len() - 1).unwrap().header.seq;
+        let prev_seq = ret.last().unwrap().header.seq;
 
         // Check if current packet seq is previous packet seq + 1.
         // Special handling for seq 0, as it can occur upon rollover from 255.
@@ -121,8 +122,8 @@ fn verify_packet_order(ret: &[Packet], p: &Packet) {
     }
 }
 
-fn parse_buffer(buf: &Vec<u8>, start_offset: &mut usize, phase: Phase) -> PacketParseResult {
-    let offset = start_offset.clone();
+fn parse_buffer(buf: &[u8], start_offset: &mut usize, phase: Phase) -> PacketParseResult {
+    let offset = *start_offset;
 
     // TODO: Change logic of == 0. This relies on the buffer being reset with 0s each time.
     if offset == buf.len() || buf[offset] == 0 {
@@ -140,7 +141,7 @@ fn parse_buffer(buf: &Vec<u8>, start_offset: &mut usize, phase: Phase) -> Packet
 
     let header = &packet.as_ref().unwrap().header;
 
-    *start_offset = offset + 4 + header.size as usize;
+    *start_offset = offset + 4 + header.size;
 
     let packet = packet.unwrap();
 

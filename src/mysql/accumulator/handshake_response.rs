@@ -1,4 +1,4 @@
-use crate::connection::{Connection, Phase};
+use crate::connection::{ClientConnectionType, Connection, Phase};
 use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags};
 use crate::mysql::packet::Packet;
 use crate::mysql::types::{
@@ -29,7 +29,7 @@ pub struct HandshakeResponseAccumulator {
 }
 
 impl Accumulator for HandshakeResponseAccumulator {
-    fn consume(&mut self, packet: &Packet, _connection: &Connection) -> Phase {
+    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
         let mut offset: usize = 0;
 
         let client_flag = {
@@ -59,16 +59,18 @@ impl Accumulator for HandshakeResponseAccumulator {
             result.result
         };
 
-        if CapabilityFlags::ClientSsl as u32 & client_flag != 0 {
-            self.accumulation_complete = true;
+        if let ClientConnectionType::Plain(_) = &connection.client_connection {
+            if CapabilityFlags::ClientSsl as u32 & client_flag != 0 {
+                self.accumulation_complete = true;
 
-            self.client_flag = client_flag;
-            self.max_packet_size = max_packet_size;
-            self.character_set = character_set;
-            self.filler = filler;
+                self.client_flag = client_flag;
+                self.max_packet_size = max_packet_size;
+                self.character_set = character_set;
+                self.filler = filler;
 
-            assert_eq!(packet.body.len(), offset);
-            return Phase::TlsExchange;
+                assert_eq!(packet.body.len(), offset);
+                return Phase::TlsExchange;
+            }
         }
 
         let username = {

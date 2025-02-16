@@ -18,6 +18,9 @@ impl Accumulator for AuthInitAccumulator {
         } else if packet.body[0] == 0x00 {
             // AuthSwitch is not required if the credentials sent in HandshakeResponse were sufficient.
             return AuthCompleteAccumulator::default().consume(packet, connection);
+        } else if packet.body[0] == 0x01 {
+            // AuthMoreData
+            return Phase::AuthSwitchResponse;
         }
 
         Phase::AuthInit

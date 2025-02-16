@@ -3,16 +3,18 @@ use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
 use crate::mysql::accumulator::result_set::ResponseAccumulator;
 use crate::mysql::command::Command;
 use rustls::{ClientConnection, ServerConnection, StreamOwned};
-use std::io::{Read, Write};
 use std::net::TcpStream;
 
-trait RWS: Read + Write + Sized {}
 pub enum ClientConnectionType {
+    #[cfg(test)]
+    None,
     Plain(TcpStream),
     Tls(StreamOwned<ServerConnection, TcpStream>),
 }
 
 pub enum ServerConnectionType {
+    #[cfg(test)]
+    None,
     Plain(TcpStream),
     Tls(StreamOwned<ClientConnection, TcpStream>),
 }
@@ -27,8 +29,8 @@ pub struct Connection {
     pub handshake: Option<HandshakeAccumulator>,
     pub handshake_response: Option<HandshakeResponseAccumulator>,
 
-    pub client_connection: Box<dyn RWS>,
-    pub server_connection: RWS,
+    pub client_connection: ClientConnectionType,
+    pub server_connection: ServerConnectionType,
 
     query_response: ResponseAccumulator,
 }
@@ -57,6 +59,11 @@ impl Connection {
             handshake_response: None,
             query_response: ResponseAccumulator::default(),
         }
+    }
+
+    #[cfg(test)]
+    pub fn default() -> Connection {
+        Connection::new(ServerConnectionType::None, ClientConnectionType::None)
     }
 
     pub fn get_state(&self) -> &Phase {
@@ -101,6 +108,7 @@ pub enum Phase {
     TlsExchange,
     AuthInit,
     AuthSwitchResponse,
+    AuthMoreData,
     AuthFailed,
     AuthComplete,
     Command,
