@@ -3,6 +3,7 @@ use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags}
 use crate::mysql::command::MySqlCommand;
 use crate::mysql::packet::{EofData, ErrorData, OkData, Packet, PacketType, ServerStatusFlags};
 use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringLenEnc};
+use std::io::{Read, Write};
 
 #[derive(Debug, Default, Clone)]
 pub struct ResponseAccumulator {
@@ -20,7 +21,11 @@ pub struct ResponseAccumulator {
 }
 
 impl Accumulator for ResponseAccumulator {
-    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
+    fn consume<RWS: Read + Write + Sized>(
+        &mut self,
+        packet: &Packet,
+        connection: &Connection<RWS>,
+    ) -> Phase {
         let mut next_phase = connection.phase.clone();
 
         if connection.get_last_command().is_none() {

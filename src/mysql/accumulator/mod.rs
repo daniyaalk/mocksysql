@@ -1,5 +1,6 @@
 use crate::connection::{Connection, Phase};
 use crate::mysql::packet::Packet;
+use std::io::{Read, Write};
 
 pub mod auth_complete;
 pub mod auth_init;
@@ -41,7 +42,11 @@ pub struct AccumulationDelta {
 /// Returns true if no the accumulator expects no further packets (e.g, on the last packet
 /// of a ResultSet).
 pub trait Accumulator {
-    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase;
+    fn consume<RWS: Read + Write + Sized>(
+        &mut self,
+        packet: &Packet,
+        connection: &Connection<RWS>,
+    ) -> Phase;
 
     fn accumulation_complete(&self) -> bool;
 

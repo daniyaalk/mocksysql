@@ -1,6 +1,7 @@
 use crate::connection::{Connection, Phase};
 use crate::mysql::accumulator::CapabilityFlags;
 use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringEOFEnc, StringFixedLen};
+use std::io::{Read, Write};
 use std::{fmt::Error, usize};
 
 #[derive(Debug)]
@@ -112,7 +113,10 @@ pub struct ErrorData {
 }
 
 impl ErrorData {
-    pub fn from_packet(packet: &Packet, connection: &Connection) -> ErrorData {
+    pub fn from_packet<RWS: Read + Write + Sized>(
+        packet: &Packet,
+        connection: &Connection<RWS>,
+    ) -> ErrorData {
         assert_eq!(packet.p_type, PacketType::Error);
         let body = &packet.body;
 
@@ -139,7 +143,11 @@ impl ErrorData {
     }
 }
 
-fn get_sql_state(packet: &Packet, connection: &Connection, offset: &usize) -> Option<SQLState> {
+fn get_sql_state<RWS: Read + Write + Sized>(
+    packet: &Packet,
+    connection: &Connection<RWS>,
+    offset: &usize,
+) -> Option<SQLState> {
     if connection.get_handshake_response().unwrap().client_flag
         & CapabilityFlags::ClientProtocol41 as u32
         == 0
@@ -194,7 +202,10 @@ pub struct OkData {
 }
 
 impl OkData {
-    pub fn from_packet(packet: &Packet, connection: &Connection) -> OkData {
+    pub fn from_packet<RWS: Read + Write + Sized>(
+        packet: &Packet,
+        connection: &Connection<RWS>,
+    ) -> OkData {
         assert_eq!(packet.p_type, PacketType::Ok);
 
         let mut offset = 0;
@@ -310,7 +321,10 @@ pub struct EofData {
 }
 
 impl EofData {
-    pub fn from_packet(packet: &Packet, connection: &Connection) -> EofData {
+    pub fn from_packet<RWS: Read + Write + Sized>(
+        packet: &Packet,
+        connection: &Connection<RWS>,
+    ) -> EofData {
         assert_eq!(packet.p_type, PacketType::Eof);
 
         let mut offset = 1;

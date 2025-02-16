@@ -2,10 +2,12 @@ use crate::mysql::accumulator::handshake::HandshakeAccumulator;
 use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
 use crate::mysql::accumulator::result_set::ResponseAccumulator;
 use crate::mysql::command::Command;
-use std::net::TcpStream;
+use std::io::{Read, Write};
+
+trait RW: Read + Write {}
 
 #[allow(dead_code)]
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct Connection {
     pub phase: Phase,
     pub partial_bytes: Option<Vec<u8>>,
@@ -14,14 +16,29 @@ pub struct Connection {
     pub handshake: Option<HandshakeAccumulator>,
     pub handshake_response: Option<HandshakeResponseAccumulator>,
 
-    pub client_connection: TcpStream,
-    pub server_connection: TcpStream,
+    pub client_connection: Box<dyn RW>,
+    pub server_connection: Box<dyn RW>,
 
     query_response: ResponseAccumulator,
 }
 
-impl Connection {
-    pub fn new(server: TcpStream, client: TcpStream) -> Connection {
+impl<RWS> Connection<RWS>
+where
+    RWS: Read + Write,
+{
+    pub fn switch_connections(
+        self,
+        server: Box<dyn Read + Write>,
+        client: Box<dyn Read + Write>,
+    ) -> Connection<RWS> {
+        Connection {
+            client_connection: client,
+            server_connection: server,
+            ..self
+        }
+    }
+
+    pub fn new(server: RWS, client: RWS) -> Connection<RWS> {
         Connection {
             client_connection: client,
             server_connection: server,
@@ -55,7 +72,10 @@ impl Connection {
     }
 }
 
-impl Connection {
+impl<RWS> Connection<RWS>
+where
+    RWS: Read + Write + Sized,
+{
     pub fn unset_partial_data(&mut self) {
         self.partial_bytes = None;
     }

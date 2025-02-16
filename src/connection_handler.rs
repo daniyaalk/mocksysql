@@ -27,7 +27,7 @@ static SERVER_TRANSITION_PHASES: LazyLock<HashSet<Phase>> = LazyLock::new(|| {
 static CLIENT_TRANSITION_PHASES: LazyLock<HashSet<Phase>> =
     LazyLock::new(|| HashSet::from([Phase::AuthInit, Phase::PendingResponse, Phase::AuthComplete]));
 
-fn exchange(mut connection: Connection) -> Result<(), Error> {
+fn exchange<RWS: Read + Write + Sized>(mut connection: Connection<RWS>) -> Result<(), Error> {
     let mut buf: [u8; 4096];
 
     loop {
@@ -68,10 +68,13 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
                 let server_tls = handle_server_tls(&mut connection.server_connection, &mut buf);
                 let client_tls = handle_client_tls(&mut connection.client_connection, &mut buf);
 
-                connection.server_connection =
-                    StreamOwned::new(server_tls, connection.server_connection).sock;
-                connection.client_connection =
-                    StreamOwned::new(client_tls, connection.client_connection).sock;
+                let server_connection = StreamOwned::new(server_tls, connection.server_connection);
+                let client_connection = StreamOwned::new(client_tls, connection.client_connection);
+
+                connection = connection.switch_connections(server_connection, client_connection);
+
+                connection.phase = Phase::HandshakeResponse;
+                println!("TLS Set");
             }
 
             println!("Listening from client: {:?}", &connection.phase);
@@ -139,7 +142,7 @@ fn is_write_query(last_command: &Option<Command>, packet: &Packet) -> bool {
 }
 
 pub fn initiate(client: TcpStream) {
-    let target_address: &str = "127.0.0.1:3307";
+    let target_address: &str = "127.0.0.1:3407";
 
     let server = TcpStream::connect(target_address).expect("Fault");
 
