@@ -2,7 +2,7 @@ use rcgen::{generate_simple_self_signed, CertifiedKey};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, IpAddr, Ipv4Addr, PrivateKeyDer, ServerName, UnixTime};
 use rustls::{ClientConnection, DigitallySignedStruct, Error, ServerConnection, SignatureScheme};
-use std::io::{Read, Write};
+use std::net::TcpStream;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -57,11 +57,7 @@ impl ServerCertVerifier for NoCertificateVerification {
     }
 }
 
-pub fn handle_tls<RW: Read + Write>(
-    from: &mut RW,
-    to: &mut RW,
-    buf: &mut [u8; 4096],
-) -> (ClientConnection, ServerConnection) {
+pub fn handle_client_tls(stream: &mut TcpStream, buf: &mut [u8; 4096]) -> ServerConnection {
     let CertifiedKey { cert, key_pair } =
         generate_simple_self_signed(vec!["localhost".to_owned()]).unwrap();
     let server_config = rustls::ServerConfig::builder()
@@ -74,33 +70,13 @@ pub fn handle_tls<RW: Read + Write>(
     let server_config = Arc::new(server_config);
     let mut server = rustls::ServerConnection::new(server_config).unwrap();
     server
-        .complete_io(from)
+        .complete_io(stream)
         .expect("Unable to initiate TLS connection with server!");
 
-    let client_config = rustls::ClientConfig::builder()
-        .dangerous()
-        .with_custom_certificate_verifier(Arc::new(NoCertificateVerification))
-        .with_no_client_auth();
-
-    let mut client = rustls::ClientConnection::new(
-        Arc::new(client_config),
-        ServerName::IpAddress(IpAddr::V4(Ipv4Addr::try_from("127.0.0.1").unwrap())),
-    )
-    .unwrap();
-    let a = client.complete_io(to);
-
-    if a.is_err() {
-        println!("TLS handshake failure: {:?}", a.err().unwrap());
-    }
-    println!("TLS handshake complete");
-
-    (client, server)
+    server
 }
 
-pub fn handle_server_tls<RW: Read + Write>(
-    from: &mut RW,
-    buf: &mut [u8; 4096],
-) -> ClientConnection {
+pub fn handle_server_tls(stream: &mut TcpStream, buf: &mut [u8; 4096]) -> ClientConnection {
     let client_config = rustls::ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(NoCertificateVerification))
@@ -111,7 +87,7 @@ pub fn handle_server_tls<RW: Read + Write>(
         ServerName::IpAddress(IpAddr::V4(Ipv4Addr::try_from("127.0.0.1").unwrap())),
     )
     .unwrap();
-    let a = client.complete_io(from);
+    let a = client.complete_io(stream);
 
     if a.is_err() {
         println!("TLS handshake failure: {:?}", a.err().unwrap());

@@ -2,10 +2,10 @@ use crate::mysql::accumulator::handshake::HandshakeAccumulator;
 use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
 use crate::mysql::accumulator::result_set::ResponseAccumulator;
 use crate::mysql::command::Command;
-use rustls::{ClientConnection, ServerConnection};
+use std::net::TcpStream;
 
 #[allow(dead_code)]
-#[derive(Default)]
+#[derive(Debug)]
 pub struct Connection {
     pub phase: Phase,
     pub partial_bytes: Option<Vec<u8>>,
@@ -14,13 +14,26 @@ pub struct Connection {
     pub handshake: Option<HandshakeAccumulator>,
     pub handshake_response: Option<HandshakeResponseAccumulator>,
 
-    pub client_connection: Option<ServerConnection>,
-    pub server_connection: Option<ClientConnection>,
+    pub client_connection: TcpStream,
+    pub server_connection: TcpStream,
 
     query_response: ResponseAccumulator,
 }
 
 impl Connection {
+    pub fn new(server: TcpStream, client: TcpStream) -> Connection {
+        Connection {
+            client_connection: client,
+            server_connection: server,
+            phase: Phase::Handshake,
+            partial_bytes: None,
+            last_command: None,
+            handshake: None,
+            handshake_response: None,
+            query_response: ResponseAccumulator::default(),
+        }
+    }
+
     pub fn get_state(&self) -> &Phase {
         &self.phase
     }
@@ -54,13 +67,13 @@ impl Connection {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]
+#[derive(Hash)]
 pub enum Phase {
-    #[default]
     Handshake,
-    TlsExchange,
     HandshakeResponse,
+    TlsExchange,
     AuthInit,
     AuthSwitchResponse,
     AuthFailed,

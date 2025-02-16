@@ -1,4 +1,3 @@
-use std::sync::{Arc, Mutex, MutexGuard};
 use util::packet_printer;
 
 use crate::mysql::accumulator::auth_complete::AuthCompleteAccumulator;
@@ -11,7 +10,7 @@ use crate::mysql::accumulator::{
     handshake::HandshakeAccumulator, handshake_response::HandshakeResponseAccumulator,
 };
 use crate::{
-    connection::{Connection, Direction, Phase},
+    connection::{Connection, Phase},
     mysql::packet::Packet,
     util,
 };
@@ -22,18 +21,10 @@ enum PacketParseResult {
     None,
 }
 
-pub fn process_incoming_frame(
-    buf: &[u8],
-    connection: &Arc<Mutex<Connection>>,
-    #[allow(unused_variables)] direction: &Direction,
-) -> Vec<Packet> {
-    let packets = make_packets(buf, connection.clone());
+pub fn process_incoming_frame(buf: &[u8], mut connection: &mut Connection) -> Vec<Packet> {
+    let packets = make_packets(buf, &mut connection);
 
     for packet in &packets {
-        let mut connection = connection
-            .try_lock()
-            .expect("Transmission race condition / lock failed.");
-
         let mut accumulator = get_accumulator(
             connection.phase.clone(),
             connection.get_response_accumulator(),
@@ -50,10 +41,7 @@ pub fn process_incoming_frame(
     packets
 }
 
-fn sync_connection_state(
-    connection: &mut MutexGuard<Connection>,
-    accumulator: Box<dyn Accumulator>,
-) {
+fn sync_connection_state(connection: &mut Connection, accumulator: Box<dyn Accumulator>) {
     if accumulator.accumulation_complete() && accumulator.get_accumulation_delta().is_some() {
         let delta = accumulator.get_accumulation_delta().unwrap();
 
@@ -91,16 +79,12 @@ fn get_accumulator(
     }
 }
 
-fn make_packets(buf: &[u8], connection: Arc<Mutex<Connection>>) -> Vec<Packet> {
+fn make_packets(buf: &[u8], connection: &mut Connection) -> Vec<Packet> {
     let mut ret: Vec<Packet> = Vec::new();
 
     let mut offset: usize = 0;
 
     loop {
-        let mut connection = connection
-            .lock()
-            .expect("Connection lock failed when reading packet.");
-
         let mut buffer_vec: Vec<u8> = connection.partial_bytes.clone().unwrap_or_default();
         buffer_vec.extend_from_slice(buf);
 
@@ -140,6 +124,7 @@ fn verify_packet_order(ret: &[Packet], p: &Packet) {
 fn parse_buffer(buf: &Vec<u8>, start_offset: &mut usize, phase: Phase) -> PacketParseResult {
     let offset = start_offset.clone();
 
+    // TODO: Change logic of == 0. This relies on the buffer being reset with 0s each time.
     if offset == buf.len() || buf[offset] == 0 {
         // If previous processing exhausted the full buffer and the packet bounds coincided with the end of the buffer
         // or if the previous transmission was smaller than the buffer, return None so that the packet list can be finalized.
