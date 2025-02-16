@@ -1,4 +1,4 @@
-use crate::connection::{ClientConnectionType, Connection, Phase};
+use crate::connection::{Connection, Phase, SwitchableConnection};
 use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags};
 use crate::mysql::packet::Packet;
 use crate::mysql::types::{
@@ -59,7 +59,7 @@ impl Accumulator for HandshakeResponseAccumulator {
             result.result
         };
 
-        if let ClientConnectionType::Plain(_) = &connection.client_connection {
+        if let SwitchableConnection::Plain(_) = &connection.client_connection {
             if CapabilityFlags::ClientSsl as u32 & client_flag != 0 {
                 self.accumulation_complete = true;
 
