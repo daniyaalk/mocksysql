@@ -30,7 +30,7 @@ static CLIENT_TRANSITION_PHASES: LazyLock<HashSet<Phase>> =
     LazyLock::new(|| HashSet::from([Phase::AuthInit, Phase::PendingResponse, Phase::AuthComplete]));
 
 pub fn initiate(client: TcpStream) {
-    let target_address: &str = "127.0.0.1:3407";
+    let target_address: &str = "127.0.0.1:3307";
 
     let server = TcpStream::connect(target_address).expect("Fault");
 

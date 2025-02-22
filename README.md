@@ -23,6 +23,8 @@ I hope to get these features implemented, but I may decide not to as well:
 * Client protocol < 4.1 (Not tested)
 * Multifactor authentication
 * Compression
+* Packets > 16,777,215 Bytes
+    * TODO: Terminate connection on large packet, or override max packet size in handshake.
 
 ## Supported:
 
