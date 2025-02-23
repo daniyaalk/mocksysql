@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::net::TcpStream;
 
 #[allow(dead_code)]
-// #[derive(Debug)]
+#[derive(Debug)]
 pub struct Connection {
     pub phase: Phase,
     pub partial_bytes: Option<Vec<u8>>,

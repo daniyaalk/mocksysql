@@ -21,8 +21,12 @@ enum PacketParseResult {
     None,
 }
 
-pub fn process_incoming_frame(buf: &[u8], connection: &mut Connection) -> Vec<Packet> {
-    let packets = make_packets(buf, connection);
+pub fn process_incoming_frame(
+    buf: &[u8],
+    connection: &mut Connection,
+    read_bytes: usize,
+) -> Vec<Packet> {
+    let packets = make_packets(buf, connection, read_bytes);
 
     for packet in &packets {
         let mut accumulator = get_accumulator(
@@ -79,14 +83,14 @@ fn get_accumulator(
     }
 }
 
-fn make_packets(buf: &[u8], connection: &mut Connection) -> Vec<Packet> {
+fn make_packets(buf: &[u8], connection: &mut Connection, read_bytes: usize) -> Vec<Packet> {
     let mut ret: Vec<Packet> = Vec::new();
 
     let mut offset: usize = 0;
 
     loop {
         let mut buffer_vec: Vec<u8> = connection.partial_bytes.clone().unwrap_or_default();
-        buffer_vec.extend_from_slice(buf);
+        buffer_vec.extend_from_slice(&buf[..read_bytes]);
 
         match parse_buffer(&buffer_vec, &mut offset, connection.phase.clone()) {
             PacketParseResult::Packet(p) => {
@@ -124,8 +128,7 @@ fn verify_packet_order(ret: &[Packet], p: &Packet) {
 fn parse_buffer(buf: &[u8], start_offset: &mut usize, phase: Phase) -> PacketParseResult {
     let offset = *start_offset;
 
-    // TODO: Change logic of == 0. This relies on the buffer being reset with 0s each time.
-    if offset == buf.len() || buf[offset] == 0 {
+    if offset == buf.len() {
         // If previous processing exhausted the full buffer and the packet bounds coincided with the end of the buffer
         // or if the previous transmission was smaller than the buffer, return None so that the packet list can be finalized.
         return PacketParseResult::None;

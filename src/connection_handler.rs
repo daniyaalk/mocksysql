@@ -45,14 +45,13 @@ pub fn initiate(client: TcpStream) {
 }
 
 fn exchange(mut connection: Connection) -> Result<(), Error> {
-    let mut buf: [u8; 4096];
+    let mut buf: [u8; 4096] = [0; 4096];
+
     let mut packets;
 
     loop {
         // Server Loop
         loop {
-            buf = [0; 4096]; // Due to a poor design choice in state_handler.rs
-
             println!("Listening from server");
 
             let read_bytes = read_bytes(&mut connection.server_connection, &mut buf)?;
@@ -63,7 +62,7 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
                 return Ok(());
             }
 
-            packets = state_handler::process_incoming_frame(&buf, &mut connection);
+            packets = state_handler::process_incoming_frame(&buf, &mut connection, read_bytes);
 
             if connection.phase == Phase::AuthSwitchResponse {
                 println!("here");
@@ -79,8 +78,6 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
 
         // client loop
         loop {
-            buf = [0; 4096]; // Due to a poor design choice in state_handler.rs
-
             #[cfg(feature = "tls")]
             if connection.phase == Phase::TlsExchange {
                 connection = switch_to_tls(connection);
@@ -96,7 +93,7 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
                 return Ok(());
             }
 
-            packets = state_handler::process_incoming_frame(&buf, &mut connection);
+            packets = state_handler::process_incoming_frame(&buf, &mut connection, read_bytes);
 
             if intercept_enabled() && intercept_command(&mut connection, &packets) {
                 // Connection returns to command phase if the query is intercepted, so the client loop needs to be started again.
