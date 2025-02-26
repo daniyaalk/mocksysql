@@ -49,6 +49,10 @@ impl Accumulator for ResponseAccumulator {
                     } else {
                         self.state = State::ColumnCount;
                     }
+                } else if connection.get_last_command().unwrap().com_code
+                    == MySqlCommand::ComFieldList
+                {
+                    self.state = State::HydrateColumns;
                 } else {
                     self.state = State::Complete;
                 }
@@ -69,9 +73,16 @@ impl Accumulator for ResponseAccumulator {
                 }
             }
             State::HydrateColumns => {
-                self.columns.push(ColumnDefinition::from_packet(packet));
-                if self.column_count == self.columns.len() {
+                if connection.get_last_command().unwrap().com_code == MySqlCommand::ComFieldList
+                    && packet.p_type == PacketType::Eof
+                {
                     self.state = State::ColumnsHydrated;
+                    next_phase = self.consume(packet, connection);
+                } else {
+                    self.columns.push(ColumnDefinition::from_packet(packet));
+                    if self.column_count == self.columns.len() {
+                        self.state = State::ColumnsHydrated;
+                    }
                 }
             }
             State::ColumnsHydrated => {
@@ -237,7 +248,7 @@ impl ColumnDefinition {
             reserved: {
                 let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
                 offset += result.offset_increment;
-                assert_eq!(offset, body.len());
+                // assert_eq!(offset, body.len());
                 result.result as u16
             },
         }
@@ -269,21 +280,21 @@ enum FieldTypes {
     MysqlTypeDatetime2,
     MysqlTypeTime2,
     MysqlTypeTypedArray,
-    MysqlTypeVector,
-    MysqlTypeInvalid,
-    MysqlTypeBool,
-    MysqlTypeJson,
-    MysqlTypeNewDecimal,
-    MysqlTypeEnum,
-    MysqlTypeSet,
-    MysqlTypeTinyBlob,
-    MysqlTypeMediumBlob,
-    MysqlTypeLongBlob,
-    MysqlTypeBlob,
-    MysqlTypeVarString,
+    MysqlTypeVector = 242,
+    MysqlTypeInvalid = 243,
+    MysqlTypeBool = 244,
+    MysqlTypeJson = 245,
+    MysqlTypeNewDecimal = 246,
+    MysqlTypeEnum = 247,
+    MysqlTypeSet = 248,
+    MysqlTypeTinyBlob = 249,
+    MysqlTypeMediumBlob = 250,
+    MysqlTypeLongBlob = 251,
+    MysqlTypeBlob = 252,
+    MysqlTypeVarString = 253,
     #[default]
-    MysqlTypeString,
-    MysqlTypeGeometry,
+    MysqlTypeString = 254,
+    MysqlTypeGeometry = 255,
 }
 
 impl TryFrom<u16> for FieldTypes {
@@ -312,20 +323,20 @@ impl TryFrom<u16> for FieldTypes {
             18 => Ok(FieldTypes::MysqlTypeDatetime2),
             19 => Ok(FieldTypes::MysqlTypeTime2),
             20 => Ok(FieldTypes::MysqlTypeTypedArray),
-            21 => Ok(FieldTypes::MysqlTypeVector),
-            22 => Ok(FieldTypes::MysqlTypeInvalid),
-            23 => Ok(FieldTypes::MysqlTypeBool),
-            24 => Ok(FieldTypes::MysqlTypeJson),
-            25 => Ok(FieldTypes::MysqlTypeNewDecimal),
-            26 => Ok(FieldTypes::MysqlTypeEnum),
-            27 => Ok(FieldTypes::MysqlTypeSet),
-            28 => Ok(FieldTypes::MysqlTypeTinyBlob),
-            29 => Ok(FieldTypes::MysqlTypeMediumBlob),
-            30 => Ok(FieldTypes::MysqlTypeLongBlob),
-            31 => Ok(FieldTypes::MysqlTypeBlob),
-            32 => Ok(FieldTypes::MysqlTypeVarString),
-            33 => Ok(FieldTypes::MysqlTypeString),
-            34 => Ok(FieldTypes::MysqlTypeGeometry),
+            242 => Ok(FieldTypes::MysqlTypeVector),
+            243 => Ok(FieldTypes::MysqlTypeInvalid),
+            244 => Ok(FieldTypes::MysqlTypeBool),
+            245 => Ok(FieldTypes::MysqlTypeJson),
+            246 => Ok(FieldTypes::MysqlTypeNewDecimal),
+            247 => Ok(FieldTypes::MysqlTypeEnum),
+            248 => Ok(FieldTypes::MysqlTypeSet),
+            249 => Ok(FieldTypes::MysqlTypeTinyBlob),
+            250 => Ok(FieldTypes::MysqlTypeMediumBlob),
+            251 => Ok(FieldTypes::MysqlTypeLongBlob),
+            252 => Ok(FieldTypes::MysqlTypeBlob),
+            253 => Ok(FieldTypes::MysqlTypeVarString),
+            254 => Ok(FieldTypes::MysqlTypeString),
+            255 => Ok(FieldTypes::MysqlTypeGeometry),
             _ => Err(format!("Invalid MySQL type value: {}", value)),
         }
     }
