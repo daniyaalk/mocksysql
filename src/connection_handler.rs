@@ -30,7 +30,7 @@ static CLIENT_TRANSITION_PHASES: LazyLock<HashSet<Phase>> =
     LazyLock::new(|| HashSet::from([Phase::AuthInit, Phase::PendingResponse, Phase::AuthComplete]));
 
 pub fn initiate(client: TcpStream) {
-    let target_address: &str = "127.0.0.1:3307";
+    let target_address = env::var("TARGET_ADDRESS").unwrap_or_else(|_| "127.0.0.1:3307".to_owned());
 
     let server = TcpStream::connect(target_address).expect("Fault");
 
@@ -156,16 +156,15 @@ pub fn write_bytes(conn: &mut SwitchableConnection, buf: &[u8]) {
     .expect("Failed to write to connection")
 }
 
-fn get_write_response(
-    _last_command: &Option<Command>,
-    sequence: &u8,
-    client_flag: u32,
-) -> Option<Vec<u8>> {
+fn get_write_response(last_command: Command, sequence: &u8, client_flag: u32) -> Option<Vec<u8>> {
     let count = GLOBAL_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let ok_data = OkData {
         header: 0x00,
         affected_rows: 1,
-        last_insert_id: count as u64,
+        last_insert_id: match last_command.arg.starts_with("INSERT ") {
+            true => count as u64,
+            false => 0,
+        },
         status_flags: None,
         warnings: None,
         info: None,
@@ -191,7 +190,7 @@ fn is_write_query(last_command: &Option<Command>, packet: &Packet) -> bool {
 }
 
 fn intercept_enabled() -> bool {
-    env::var("INTERCEPT_INSERT").is_ok() && env::var("INTERCEPT_INSERT").unwrap() == "true"
+    env::var("INTERCEPT_WRITES").is_ok() && env::var("INTERCEPT_WRITES").unwrap() == "true"
 }
 
 fn intercept_command(connection: &mut Connection, packets: &[Packet]) -> bool {
@@ -206,8 +205,10 @@ fn intercept_command(connection: &mut Connection, packets: &[Packet]) -> bool {
         .map(|hr| hr.client_flag);
 
     if packets.len() == 1 && is_write_query(&last_command, packets.first().unwrap()) {
+        let last_command = last_command.unwrap();
+
         if let Some(response) = get_write_response(
-            &last_command,
+            last_command,
             &packets.first().unwrap().header.seq,
             client_flag.unwrap(),
         ) {

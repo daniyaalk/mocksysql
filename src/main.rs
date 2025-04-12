@@ -1,3 +1,4 @@
+use std::env;
 use std::net::TcpListener;
 
 mod connection;
@@ -9,7 +10,7 @@ mod tls;
 mod util;
 
 fn main() {
-    let bind_address: &str = "127.0.0.1:6033";
+    let bind_address = env::var("BIND_ADDRESS").unwrap_or_else(|_| "127.0.0.1:6033".to_owned());
 
     let listener = TcpListener::bind(bind_address);
 

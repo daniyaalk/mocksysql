@@ -32,6 +32,14 @@ I hope to get these features implemented, but I may decide not to as well:
 * Intercept insert queries by setting environment variable `INTERCEPT_INSERT=true`
     * Last Insert ID as part of query response will be returned by an atomic counter starting from 100.
 
+## Configuration
+
+Environment Variables:
+
+* BIND_ADDRESS: Address to listen on
+* TARGET_ADDRESS: Address of target MySQL Server
+* INTERCEPT_WRITES: Intercepts write queries (SELECT, INSERT, DELETE) and returns a success response
+
 ## Roadmap:
 
 * Intercept updates.
