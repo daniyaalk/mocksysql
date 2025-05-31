@@ -95,6 +95,14 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
 
             packets = state_handler::process_incoming_frame(&buf, &mut connection, read_bytes);
 
+            let encoded_bytes = state_handler::generate_outgoing_frame(&packets);
+
+            for (i, encoded_byte) in encoded_bytes.iter().enumerate() {
+                if i > read_bytes || &buf[i] != encoded_byte {
+                    panic!("Encoding error")
+                }
+            }
+
             if intercept_enabled() && intercept_command(&mut connection, &packets) {
                 // Connection returns to command phase if the query is intercepted, so the client loop needs to be started again.
                 continue;

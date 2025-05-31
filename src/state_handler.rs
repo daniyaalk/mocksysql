@@ -26,23 +26,26 @@ pub fn process_incoming_frame(
     connection: &mut Connection,
     read_bytes: usize,
 ) -> Vec<Packet> {
-    let packets = make_packets(buf, connection, read_bytes);
+    let in_packets = make_packets(buf, connection, read_bytes);
+    let mut out_packets = vec![];
 
-    for packet in &packets {
+    for mut in_packet in in_packets {
         let mut accumulator = get_accumulator(
             connection.phase.clone(),
             connection.get_response_accumulator(),
         );
 
-        packet_printer::print_packet(packet);
-        connection.phase = accumulator.consume(packet, connection);
+        packet_printer::print_packet(&in_packet);
+
+        let out_packet: Packet = in_packet.clone();
+        connection.phase = accumulator.consume(&mut in_packet, &mut out_packet, connection);
 
         sync_connection_state(connection, accumulator);
 
         println!("{:?}", connection.get_state());
     }
 
-    packets
+    out_packets
 }
 
 fn sync_connection_state(connection: &mut Connection, accumulator: Box<dyn Accumulator>) {
@@ -148,4 +151,15 @@ fn parse_buffer(buf: &[u8], start_offset: &mut usize, phase: Phase) -> PacketPar
     let packet = packet.unwrap();
 
     PacketParseResult::Packet(packet)
+}
+
+pub fn generate_outgoing_frame(packet: &Vec<Packet>) -> Vec<u8> {
+    let mut ret: Vec<u8> = Vec::new();
+
+    for packet in packet.iter() {
+        ret.append(&mut packet.header.to_bytes().to_vec());
+        ret.append(&mut packet.body.to_vec());
+    }
+
+    ret
 }
