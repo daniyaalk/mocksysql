@@ -9,6 +9,8 @@ tls = ["dep:rustls", "dep:rcgen"]
 [dependencies]
 rustls = { version = "0.23.23", optional = true }
 rcgen = { version = "0.13.2", optional = true }
+sqlparser = { version = "0.56.0", features = ["serde"] }
+serde_json = { version = "1.0.140" }
 
 [profile.release]
 opt-level = 3

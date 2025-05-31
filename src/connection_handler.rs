@@ -6,6 +6,8 @@ use crate::tls::{handle_client_tls, handle_server_tls};
 use crate::{connection::Connection, state_handler};
 #[cfg(feature = "tls")]
 use rustls::StreamOwned;
+use sqlparser::dialect::MySqlDialect;
+use sqlparser::parser::Parser;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::sync::atomic::AtomicU8;
@@ -182,11 +184,19 @@ fn is_write_query(last_command: &Option<Command>, packet: &Packet) -> bool {
     let last_command = last_command.as_ref().unwrap();
     let last_command_arg = &last_command.arg.to_lowercase();
 
-    packet.p_type.eq(&PacketType::Command)
+    let ret = packet.p_type.eq(&PacketType::Command)
         && last_command.com_code.eq(&MySqlCommand::ComQuery)
         && (last_command_arg.starts_with("insert")
             || last_command_arg.starts_with("update")
-            || last_command_arg.starts_with("delete"))
+            || last_command_arg.starts_with("delete"));
+
+    let parsed = Parser::parse_sql(&MySqlDialect {}, last_command_arg);
+
+    if parsed.is_ok() {
+        println!("{}", serde_json::to_string(&parsed.unwrap()).unwrap());
+    }
+
+    ret
 }
 
 fn intercept_enabled() -> bool {
