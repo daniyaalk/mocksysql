@@ -12,7 +12,7 @@ pub struct AuthSwitchRequestAccumulator {
 }
 
 impl Accumulator for AuthSwitchRequestAccumulator {
-    fn consume(&mut self, packet: &Packet, _connection: &Connection) -> Phase {
+    fn consume(&mut self, packet: &mut Packet, _connection: &Connection) -> Phase {
         let mut offset: usize = 0;
 
         let status_tag = {

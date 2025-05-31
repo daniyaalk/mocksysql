@@ -29,7 +29,7 @@ struct Param {
 }
 
 impl Accumulator for CommandAccumulator {
-    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
+    fn consume(&mut self, packet: &mut Packet, connection: &Connection) -> Phase {
         let mut offset = 0;
         let body = &packet.body;
 

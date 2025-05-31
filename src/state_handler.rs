@@ -29,16 +29,16 @@ pub fn process_incoming_frame(
     let in_packets = make_packets(buf, connection, read_bytes);
     let mut out_packets = vec![];
 
-    for mut in_packet in in_packets {
+    for mut packet in in_packets {
         let mut accumulator = get_accumulator(
             connection.phase.clone(),
             connection.get_response_accumulator(),
         );
 
-        packet_printer::print_packet(&in_packet);
+        packet_printer::print_packet(&packet);
 
-        let out_packet: Packet = in_packet.clone();
-        connection.phase = accumulator.consume(&mut in_packet, &mut out_packet, connection);
+        connection.phase = accumulator.consume(&mut packet, connection);
+        out_packets.push(packet);
 
         sync_connection_state(connection, accumulator);
 

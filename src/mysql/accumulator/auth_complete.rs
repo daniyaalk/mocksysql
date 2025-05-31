@@ -8,7 +8,7 @@ pub struct AuthCompleteAccumulator {
 }
 
 impl Accumulator for AuthCompleteAccumulator {
-    fn consume(&mut self, packet: &Packet, _connection: &Connection) -> Phase {
+    fn consume(&mut self, packet: &mut Packet, _connection: &Connection) -> Phase {
         let phase;
         if PacketType::Ok == packet.p_type {
             phase = Phase::Command;
