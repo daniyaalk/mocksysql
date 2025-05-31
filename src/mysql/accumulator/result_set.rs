@@ -1,8 +1,11 @@
 use crate::connection::{Connection, Phase};
 use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags};
 use crate::mysql::command::MySqlCommand;
-use crate::mysql::packet::{EofData, ErrorData, OkData, Packet, PacketType, ServerStatusFlags};
+use crate::mysql::packet::{
+    EofData, ErrorData, OkData, Packet, PacketHeader, PacketType, ServerStatusFlags,
+};
 use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringLenEnc};
+use std::collections::HashMap;
 
 #[derive(Debug, Default, Clone)]
 pub struct ResponseAccumulator {
@@ -61,15 +64,19 @@ impl Accumulator for ResponseAccumulator {
             State::MetaExchange => {
                 self.metadata_follows = {
                     let result = IntLenEnc::from_bytes(&packet.body, Some(1));
-                    result.result == 0
+                    result.result == 1
                 };
                 self.state = State::ColumnCount;
             }
             State::ColumnCount => {
                 self.column_count = IntLenEnc::from_bytes(&packet.body, None).result as usize;
-                self.state = State::HydrateColumns;
-                if !self.metadata_follows {
-                    self.state = State::ColumnsHydrated;
+                self.state = State::ColumnsHydrated;
+                if (connection.get_handshake_response().unwrap().client_flag
+                    & CapabilityFlags::ClientOptionalResultSetMetadata as u32
+                    == 0)
+                    || self.metadata_follows
+                {
+                    self.state = State::HydrateColumns;
                 }
             }
             State::HydrateColumns => {
@@ -98,32 +105,36 @@ impl Accumulator for ResponseAccumulator {
                 }
             }
             State::HydrateRows => {
-                if packet.get_packet_type() != PacketType::Other {
-                    let mut status_flags: Option<u16> = None;
+                let mut status_flags: Option<u16> = None;
 
-                    match packet.get_packet_type() {
-                        PacketType::Ok => {
-                            status_flags = OkData::from_packet(packet, connection).status_flags
-                        }
-                        PacketType::Eof => {
-                            status_flags = EofData::from_packet(packet, connection).status_flags
-                        }
-                        _ => (),
+                match packet.get_packet_type() {
+                    PacketType::Ok => {
+                        status_flags = OkData::from_packet(packet, connection).status_flags
                     }
+                    PacketType::Eof => {
+                        status_flags = EofData::from_packet(packet, connection).status_flags
+                    }
+                    PacketType::Other => {
+                        self.override_row(packet);
+                    }
+                    _ => {
+                        panic!("Unexpected packet type")
+                    }
+                }
 
-                    if packet.p_type == PacketType::Error
-                        || (status_flags.is_some()
-                            && (status_flags.unwrap()
-                                & ServerStatusFlags::ServerMoreResultsExist as u16
-                                == 0))
+                if packet.p_type == PacketType::Error || status_flags.is_some() {
+                    // No further data in this result set
+                    self.state = State::Complete;
+
+                    // Query returns multiple Result sets
+                    if status_flags.is_some()
+                        && status_flags.unwrap() & ServerStatusFlags::ServerMoreResultsExist as u16
+                            != 0
                     {
-                        // No further Result Sets remaining
-                        self.state = State::Complete;
-                        next_phase = self.consume(packet, connection);
-                    } else {
-                        // More ResultSets in Pipeline
                         self.state = State::Initiated;
                     }
+
+                    next_phase = self.consume(packet, connection);
                 }
             }
             State::Complete => {
@@ -144,6 +155,51 @@ impl Accumulator for ResponseAccumulator {
             response: Some(self.clone()), // yuck
             ..AccumulationDelta::default()
         })
+    }
+}
+
+impl ResponseAccumulator {
+    fn parse_row(&self, packet: &Packet) -> HashMap<u16, Option<String>> {
+        let mut row = HashMap::new();
+
+        let mut i = 0;
+        let mut column_index = 0;
+        let bytes = packet.body.as_slice();
+
+        while i < packet.body.len() {
+            if bytes[i] == 0xfb {
+                row.insert(column_index, None);
+                i += 1;
+            } else {
+                let field = StringLenEnc::from_bytes(&bytes[i..].to_vec(), None);
+                row.insert(column_index, Some(field.result));
+                i += field.offset_increment;
+            }
+
+            column_index += 1;
+        }
+
+        row
+    }
+
+    fn override_row(&self, packet: &mut Packet) {
+        let row = self.parse_row(packet);
+        let mut new_body: Vec<u8> = Vec::new();
+
+        for i in 0..row.len() {
+            let mut value = row.get(&(i as u16)).unwrap();
+
+            new_body.extend(match value {
+                None => vec![0xfbu8],
+                Some(value) => StringLenEnc::encode(value.clone(), None),
+            })
+        }
+
+        packet.header = PacketHeader {
+            size: new_body.len(),
+            seq: packet.header.seq,
+        };
+        packet.body = new_body;
     }
 }
 

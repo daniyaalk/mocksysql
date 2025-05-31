@@ -64,11 +64,9 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
 
             packets = state_handler::process_incoming_frame(&buf, &mut connection, read_bytes);
 
-            if connection.phase == Phase::AuthSwitchResponse {
-                println!("here");
-            }
+            let encoded_bytes = state_handler::generate_outgoing_frame(&packets);
 
-            write_bytes(&mut connection.client_connection, &buf[..read_bytes]);
+            write_bytes(&mut connection.client_connection, encoded_bytes.as_slice());
 
             if SERVER_TRANSITION_PHASES.contains(&connection.phase) {
                 println!("Transitioning to client");
@@ -97,18 +95,12 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
 
             let encoded_bytes = state_handler::generate_outgoing_frame(&packets);
 
-            for (i, encoded_byte) in encoded_bytes.iter().enumerate() {
-                if i > read_bytes || &buf[i] != encoded_byte {
-                    panic!("Encoding error")
-                }
-            }
-
             if intercept_enabled() && intercept_command(&mut connection, &packets) {
                 // Connection returns to command phase if the query is intercepted, so the client loop needs to be started again.
                 continue;
             }
 
-            write_bytes(&mut connection.server_connection, &buf[..read_bytes]);
+            write_bytes(&mut connection.server_connection, encoded_bytes.as_slice());
 
             if CLIENT_TRANSITION_PHASES.contains(&connection.phase) {
                 println!("Transitioning to server");

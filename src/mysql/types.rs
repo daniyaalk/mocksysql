@@ -138,6 +138,14 @@ impl Converter<String> for StringLenEnc {
             result,
         }
     }
+
+    fn encode(value: String, _length: Option<usize>) -> Vec<u8> {
+        let mut out = vec![];
+
+        out.append(&mut IntLenEnc::encode(value.len() as u64, None));
+        out.append(&mut value.as_bytes().to_vec());
+        out
+    }
 }
 
 impl Converter<String> for StringNullEnc {
