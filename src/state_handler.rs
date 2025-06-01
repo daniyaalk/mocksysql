@@ -1,5 +1,3 @@
-use util::packet_printer;
-
 use crate::mysql::accumulator::auth_complete::AuthCompleteAccumulator;
 use crate::mysql::accumulator::auth_init::AuthInitAccumulator;
 use crate::mysql::accumulator::auth_switch_response::AuthSwitchResponseAccumulator;
@@ -9,10 +7,10 @@ use crate::mysql::accumulator::Accumulator;
 use crate::mysql::accumulator::{
     handshake::HandshakeAccumulator, handshake_response::HandshakeResponseAccumulator,
 };
+use crate::util::packet_printer;
 use crate::{
     connection::{Connection, Phase},
     mysql::packet::Packet,
-    util,
 };
 
 enum PacketParseResult {

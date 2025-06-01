@@ -4,7 +4,7 @@ use crate::mysql::command::{Command, MySqlCommand};
 use crate::mysql::packet::{OkData, Packet, PacketType};
 #[cfg(feature = "tls")]
 use crate::tls::{handle_client_tls, handle_server_tls};
-use crate::{connection::Connection, state_handler};
+use crate::{connection::Connection, materialization, state_handler};
 #[cfg(feature = "tls")]
 use rustls::StreamOwned;
 use sqlparser::dialect::MySqlDialect;
@@ -195,6 +195,7 @@ fn is_write_query(last_command: &Option<Command>, packet: &Packet) -> bool {
     let parsed = Parser::parse_sql(&MySqlDialect {}, last_command_arg);
 
     if parsed.is_ok() {
+        materialization::get_diff(last_command_arg);
         println!("{}", serde_json::to_string(&parsed.unwrap()).unwrap());
     }
 
