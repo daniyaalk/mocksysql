@@ -1,11 +1,15 @@
+use crate::materialization::StateDifferenceMap;
 use crate::mysql::accumulator::handshake::HandshakeAccumulator;
 use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
 use crate::mysql::accumulator::result_set::ResponseAccumulator;
 use crate::mysql::command::Command;
+use dashmap::DashMap;
 #[cfg(feature = "tls")]
 use rustls::{ClientConnection, ServerConnection, StreamOwned};
 use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::net::TcpStream;
+use std::sync::Arc;
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -21,10 +25,15 @@ pub struct Connection {
     pub server_connection: SwitchableConnection,
 
     query_response: ResponseAccumulator,
+    pub diff: StateDifferenceMap,
 }
 
 impl Connection {
-    pub fn new(server: SwitchableConnection, client: SwitchableConnection) -> Connection {
+    pub fn new(
+        server: SwitchableConnection,
+        client: SwitchableConnection,
+        state_difference_map: StateDifferenceMap,
+    ) -> Connection {
         Connection {
             client_connection: client,
             server_connection: server,
@@ -34,12 +43,19 @@ impl Connection {
             handshake: None,
             handshake_response: None,
             query_response: ResponseAccumulator::default(),
+            diff: state_difference_map,
         }
     }
 
     #[cfg(test)]
     pub fn default() -> Connection {
-        Connection::new(SwitchableConnection::None, SwitchableConnection::None)
+        let map = Arc::new(DashMap::<BTreeSet<(String, String)>, String>::new());
+
+        Connection::new(
+            SwitchableConnection::None,
+            SwitchableConnection::None,
+            StateDifferenceMap::default(),
+        )
     }
 
     pub fn get_state(&self) -> &Phase {

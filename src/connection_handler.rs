@@ -1,4 +1,5 @@
 use crate::connection::{Phase, SwitchableConnection};
+use crate::materialization::StateDifferenceMap;
 use crate::mysql::command::{Command, MySqlCommand};
 use crate::mysql::packet::{OkData, Packet, PacketType};
 #[cfg(feature = "tls")]
@@ -31,7 +32,7 @@ static SERVER_TRANSITION_PHASES: LazyLock<HashSet<Phase>> = LazyLock::new(|| {
 static CLIENT_TRANSITION_PHASES: LazyLock<HashSet<Phase>> =
     LazyLock::new(|| HashSet::from([Phase::AuthInit, Phase::PendingResponse, Phase::AuthComplete]));
 
-pub fn initiate(client: TcpStream) {
+pub fn initiate(client: TcpStream, state_difference_map: StateDifferenceMap) {
     let target_address = env::var("TARGET_ADDRESS").unwrap_or_else(|_| "127.0.0.1:3307".to_owned());
 
     let server = TcpStream::connect(target_address).expect("Fault");
@@ -39,6 +40,7 @@ pub fn initiate(client: TcpStream) {
     let connection = Connection::new(
         SwitchableConnection::Plain(RefCell::new(server)),
         SwitchableConnection::Plain(RefCell::new(client)),
+        state_difference_map,
     );
 
     let worker = thread::spawn(move || exchange(connection));
