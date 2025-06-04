@@ -1,10 +1,10 @@
-mod evaluator;
+pub mod evaluator;
 
 use dashmap::DashMap;
 use sqlparser::ast::{Assignment, AssignmentTarget, Expr, Statement, TableFactor};
 use sqlparser::dialect::MySqlDialect;
 use sqlparser::parser::Parser;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 
@@ -14,7 +14,7 @@ Set<(column_name, Expr)> -> updated_value, provided all conditions stipulated in
 TODO: Prevent conflict with multiple databases that have the same table names.
 TODO: Add accommodations for non-equality parameters.
 */
-pub type StateDifference = BTreeMap<(String, Option<Expr>), Option<String>>;
+pub type StateDifference = Vec<(Option<Expr>, HashMap<String, Option<String>>)>;
 
 /**
 Divergence stored in the following format:
@@ -68,25 +68,20 @@ fn update_diff_log(
     map: &mut StateDiffLog,
     selection: Option<Expr>,
     table_name: &String,
-    processed_assignments: Result<Vec<(String, Option<String>)>, &str>,
+    processed_assignments: Result<HashMap<String, Option<String>>, &str>,
 ) {
     if !map.contains_key(table_name) {
         map.insert(table_name.clone(), StateDifference::default());
     }
 
     let mut state_difference = map.get_mut(table_name).unwrap();
-    for processed_assignment in processed_assignments.unwrap() {
-        state_difference.insert(
-            (processed_assignment.0, selection.clone()),
-            processed_assignment.1,
-        );
-    }
+    state_difference.push((selection, processed_assignments.unwrap()))
 }
 
 fn process_assignments(
     assignments: Vec<Assignment>,
-) -> Result<Vec<(String, Option<String>)>, &'static str> {
-    let mut processed_assignments = Vec::default();
+) -> Result<HashMap<String, Option<String>>, &'static str> {
+    let mut processed_assignments = HashMap::default();
 
     for assignment in assignments {
         if let Expr::Value(value) = assignment.value {
@@ -108,8 +103,9 @@ fn process_assignments(
                 .value
                 .clone();
 
-            let updated_value = value.into_string();
-            processed_assignments.push((column_name, updated_value));
+            let updated_value = value.clone().into_string();
+            println!("updated value: {:?} {:?}", value, updated_value);
+            processed_assignments.insert(column_name, updated_value);
         } else {
             panic_on_unsupported_behaviour("Non-value based assignment in update statement!");
             return Err("Non-value based assignment in update statement!");

@@ -196,7 +196,7 @@ fn is_write_query(
             || last_command_arg.starts_with("update")
             || last_command_arg.starts_with("delete"));
 
-    let parsed = Parser::parse_sql(&MySqlDialect {}, last_command_arg);
+    let parsed = Parser::parse_sql(&MySqlDialect {}, &last_command.arg);
 
     if parsed.is_ok() {
         materialization::get_diff(diff, last_command_arg);

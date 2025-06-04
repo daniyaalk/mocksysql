@@ -6,19 +6,19 @@ use sqlparser::ast::{BinaryOperator, Expr, Value};
 use std::collections::HashMap;
 
 #[derive(Debug)]
-enum ParseResult {
+pub enum ParseResult {
     Boolean(bool),
     String(Option<String>),
 }
 
-trait Parser {
+pub trait Parser {
     fn evaluate(
         row: &HashMap<String, Option<String>>,
         expr: &Box<Expr>,
     ) -> Result<ParseResult, &'static str>;
 }
 
-struct Parse {}
+pub struct Parse {}
 
 struct EvaluateConjunction {}
 
@@ -195,7 +195,7 @@ mod tests {
 
         let parsed_sql = sqlparser::parser::Parser::parse_sql(
             &MySqlDialect {},
-            "update account set a=\"b\" where (x is NULL AND a = 1)",
+            "update account set a=\"b\" where (x is NULL AND a = \"SUCCESS\")",
         )
         .unwrap();
 

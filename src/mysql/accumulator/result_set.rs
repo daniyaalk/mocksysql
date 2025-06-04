@@ -1,4 +1,5 @@
 use crate::connection::{Connection, Phase};
+use crate::materialization::evaluator::{Parse, ParseResult, Parser};
 use crate::materialization::StateDifference;
 use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags};
 use crate::mysql::command::MySqlCommand;
@@ -8,7 +9,6 @@ use crate::mysql::packet::{
 use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringLenEnc};
 use sqlparser::ast::Statement;
 use sqlparser::dialect::MySqlDialect;
-use sqlparser::parser::Parser;
 use std::collections::HashMap;
 
 #[derive(Debug, Default, Clone)]
@@ -65,7 +65,7 @@ impl Accumulator for ResponseAccumulator {
                     self.state = State::Complete;
                 }
 
-                self.parsed_sql = Parser::parse_sql(
+                self.parsed_sql = sqlparser::parser::Parser::parse_sql(
                     &MySqlDialect {},
                     &connection.get_last_command().unwrap().arg,
                 )
@@ -208,15 +208,24 @@ impl ResponseAccumulator {
     fn override_row(&self, packet: &mut Packet, diff: &StateDifference) {
         let row = self.parse_row(packet);
         let mut new_body: Vec<u8> = Vec::new();
+        let mut override_state = None;
+
+        for state_changes in diff {
+            if state_changes.0.is_none() {
+                override_state = Some(&state_changes.1)
+            } else if let Ok(ParseResult::Boolean(true)) =
+                Parse::evaluate(&row, &Box::new(state_changes.0.clone().unwrap()))
+            {
+                override_state = Some(&state_changes.1)
+            }
+        }
 
         for i in 0..row.len() {
             let column_name = &self.columns.get(i).unwrap().org_name;
-            let value = row.get(column_name).unwrap();
-            
-            if self.parsed_sql.is_some() {
-                
-                if column_name,
-                
+            let mut value = row.get(column_name).unwrap();
+
+            if override_state.is_some() && override_state.unwrap().contains_key(column_name) {
+                value = override_state.unwrap().get(column_name).unwrap();
             }
 
             new_body.extend(match value {
