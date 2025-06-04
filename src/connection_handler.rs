@@ -1,5 +1,5 @@
 use crate::connection::{Phase, SwitchableConnection};
-use crate::materialization::StateDifferenceMap;
+use crate::materialization::StateDiffLog;
 use crate::mysql::command::{Command, MySqlCommand};
 use crate::mysql::packet::{OkData, Packet, PacketType};
 #[cfg(feature = "tls")]
@@ -32,7 +32,7 @@ static SERVER_TRANSITION_PHASES: LazyLock<HashSet<Phase>> = LazyLock::new(|| {
 static CLIENT_TRANSITION_PHASES: LazyLock<HashSet<Phase>> =
     LazyLock::new(|| HashSet::from([Phase::AuthInit, Phase::PendingResponse, Phase::AuthComplete]));
 
-pub fn initiate(client: TcpStream, state_difference_map: StateDifferenceMap) {
+pub fn initiate(client: TcpStream, state_difference_map: StateDiffLog) {
     let target_address = env::var("TARGET_ADDRESS").unwrap_or_else(|_| "127.0.0.1:3307".to_owned());
 
     let server = TcpStream::connect(target_address).expect("Fault");
@@ -178,7 +178,11 @@ fn get_write_response(last_command: Command, sequence: &u8, client_flag: u32) ->
     Some(ok_data.to_packet(sequence + 1, client_flag).to_bytes())
 }
 
-fn is_write_query(last_command: &Option<Command>, packet: &Packet) -> bool {
+fn is_write_query(
+    last_command: &Option<Command>,
+    packet: &Packet,
+    diff: &mut StateDiffLog,
+) -> bool {
     if last_command.is_none() {
         return false;
     }
@@ -195,8 +199,9 @@ fn is_write_query(last_command: &Option<Command>, packet: &Packet) -> bool {
     let parsed = Parser::parse_sql(&MySqlDialect {}, last_command_arg);
 
     if parsed.is_ok() {
-        materialization::get_diff(last_command_arg);
+        materialization::get_diff(diff, last_command_arg);
         println!("{}", serde_json::to_string(&parsed.unwrap()).unwrap());
+        println!("State: {:?}", diff);
     }
 
     ret
@@ -217,7 +222,13 @@ fn intercept_command(connection: &mut Connection, packets: &[Packet]) -> bool {
         .as_ref()
         .map(|hr| hr.client_flag);
 
-    if packets.len() == 1 && is_write_query(&last_command, packets.first().unwrap()) {
+    if packets.len() == 1
+        && is_write_query(
+            &last_command,
+            packets.first().unwrap(),
+            &mut connection.diff,
+        )
+    {
         let last_command = last_command.unwrap();
 
         if let Some(response) = get_write_response(

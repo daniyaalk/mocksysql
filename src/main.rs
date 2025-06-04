@@ -1,4 +1,4 @@
-use crate::materialization::StateDifferenceMap;
+use crate::materialization::StateDiffLog;
 use std::env;
 use std::net::TcpListener;
 use std::sync::Arc;
@@ -19,7 +19,7 @@ fn main() {
 
     let listener = TcpListener::bind(bind_address);
 
-    let state_difference_map = StateDifferenceMap::default();
+    let state_difference_map = StateDiffLog::default();
 
     match listener {
         Err(_) => println!("Error when binding to socket!"),

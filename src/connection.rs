@@ -1,4 +1,4 @@
-use crate::materialization::StateDifferenceMap;
+use crate::materialization::StateDiffLog;
 use crate::mysql::accumulator::handshake::HandshakeAccumulator;
 use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
 use crate::mysql::accumulator::result_set::ResponseAccumulator;
@@ -25,14 +25,14 @@ pub struct Connection {
     pub server_connection: SwitchableConnection,
 
     query_response: ResponseAccumulator,
-    pub diff: StateDifferenceMap,
+    pub diff: StateDiffLog,
 }
 
 impl Connection {
     pub fn new(
         server: SwitchableConnection,
         client: SwitchableConnection,
-        state_difference_map: StateDifferenceMap,
+        state_difference_map: StateDiffLog,
     ) -> Connection {
         Connection {
             client_connection: client,
@@ -54,7 +54,7 @@ impl Connection {
         Connection::new(
             SwitchableConnection::None,
             SwitchableConnection::None,
-            StateDifferenceMap::default(),
+            StateDiffLog::default(),
         )
     }
 

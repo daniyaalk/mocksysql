@@ -1,10 +1,14 @@
 use crate::connection::{Connection, Phase};
+use crate::materialization::StateDifference;
 use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags};
 use crate::mysql::command::MySqlCommand;
 use crate::mysql::packet::{
     EofData, ErrorData, OkData, Packet, PacketHeader, PacketType, ServerStatusFlags,
 };
 use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringLenEnc};
+use sqlparser::ast::Statement;
+use sqlparser::dialect::MySqlDialect;
+use sqlparser::parser::Parser;
 use std::collections::HashMap;
 
 #[derive(Debug, Default, Clone)]
@@ -20,6 +24,7 @@ pub struct ResponseAccumulator {
     column_count: usize,
     accumulation_complete: bool,
     error: Option<ErrorData>,
+    parsed_sql: Option<Vec<Statement>>,
 }
 
 impl Accumulator for ResponseAccumulator {
@@ -59,6 +64,13 @@ impl Accumulator for ResponseAccumulator {
                 } else {
                     self.state = State::Complete;
                 }
+
+                self.parsed_sql = Parser::parse_sql(
+                    &MySqlDialect {},
+                    &connection.get_last_command().unwrap().arg,
+                )
+                .ok();
+
                 next_phase = self.consume(packet, connection)
             }
             State::MetaExchange => {
@@ -115,7 +127,12 @@ impl Accumulator for ResponseAccumulator {
                         status_flags = EofData::from_packet(packet, connection).status_flags
                     }
                     PacketType::Other => {
-                        self.override_row(packet);
+                        if let Some(diff) = &connection
+                            .diff
+                            .get(&self.columns.first().unwrap().org_table)
+                        {
+                            self.override_row(packet, diff);
+                        }
                     }
                     _ => {
                         panic!("Unexpected packet type")
@@ -159,7 +176,7 @@ impl Accumulator for ResponseAccumulator {
 }
 
 impl ResponseAccumulator {
-    fn parse_row(&self, packet: &Packet) -> HashMap<u16, Option<String>> {
+    fn parse_row(&self, packet: &Packet) -> HashMap<String, Option<String>> {
         let mut row = HashMap::new();
 
         let mut i = 0;
@@ -168,11 +185,17 @@ impl ResponseAccumulator {
 
         while i < packet.body.len() {
             if bytes[i] == 0xfb {
-                row.insert(column_index, None);
+                row.insert(
+                    self.columns.get(column_index).unwrap().org_name.clone(),
+                    None,
+                );
                 i += 1;
             } else {
                 let field = StringLenEnc::from_bytes(&bytes[i..].to_vec(), None);
-                row.insert(column_index, Some(field.result));
+                row.insert(
+                    self.columns.get(column_index).unwrap().org_name.clone(),
+                    Some(field.result),
+                );
                 i += field.offset_increment;
             }
 
@@ -182,12 +205,19 @@ impl ResponseAccumulator {
         row
     }
 
-    fn override_row(&self, packet: &mut Packet) {
+    fn override_row(&self, packet: &mut Packet, diff: &StateDifference) {
         let row = self.parse_row(packet);
         let mut new_body: Vec<u8> = Vec::new();
 
         for i in 0..row.len() {
-            let mut value = row.get(&(i as u16)).unwrap();
+            let column_name = &self.columns.get(i).unwrap().org_name;
+            let value = row.get(column_name).unwrap();
+            
+            if self.parsed_sql.is_some() {
+                
+                if column_name,
+                
+            }
 
             new_body.extend(match value {
                 None => vec![0xfbu8],

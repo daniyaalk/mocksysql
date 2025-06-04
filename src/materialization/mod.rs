@@ -1,10 +1,11 @@
+mod evaluator;
+
 use dashmap::DashMap;
 use sqlparser::ast::{Assignment, AssignmentTarget, Expr, Statement, TableFactor};
 use sqlparser::dialect::MySqlDialect;
 use sqlparser::parser::Parser;
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::env;
-use std::ops::DerefMut;
 use std::sync::Arc;
 
 /**
@@ -13,18 +14,18 @@ Set<(column_name, Expr)> -> updated_value, provided all conditions stipulated in
 TODO: Prevent conflict with multiple databases that have the same table names.
 TODO: Add accommodations for non-equality parameters.
 */
-pub type StateDifference = BTreeSet<(String, (Expr, Option<String>))>;
+pub type StateDifference = BTreeMap<(String, Option<Expr>), Option<String>>;
 
 /**
 Divergence stored in the following format:
 DashMap<K, V>; where K : Table, V: StateDifference
 */
-pub type StateDifferenceMap = Arc<DashMap<String, StateDifference>>;
+pub type StateDiffLog = Arc<DashMap<String, StateDifference>>;
 
 const DIALECT: MySqlDialect = MySqlDialect {};
 
-pub fn get_diff(map: &mut StateDifferenceMap, query: &String) -> Option<StateDifference> {
-    let ast = Parser::parse_sql(&DIALECT, &query);
+pub fn get_diff(map: &mut StateDiffLog, query: &str) -> Option<StateDifference> {
+    let ast = Parser::parse_sql(&DIALECT, query);
 
     if ast.is_err() {
         return None;
@@ -42,10 +43,6 @@ pub fn get_diff(map: &mut StateDifferenceMap, query: &String) -> Option<StateDif
         {
             if let TableFactor::Table { name, alias, .. } = table.relation {
                 let table_name = name.0.last().unwrap().clone().to_string();
-                // let table_alias = match alias {
-                //     None => None,
-                //     Some(alias) => Some(alias.name.value),
-                // };
 
                 let processed_assignments = process_assignments(assignments);
 
@@ -54,19 +51,9 @@ pub fn get_diff(map: &mut StateDifferenceMap, query: &String) -> Option<StateDif
                     return None;
                 }
 
-                {
-                    if !map.contains_key(&table_name) {
-                        map.insert(table_name.clone(), StateDifference::default());
-                    }
+                println!("{:?}", &processed_assignments);
 
-                    let mut state_difference = map.get_mut(&table_name).unwrap().deref_mut();
-                    for processed_assignment in processed_assignments.unwrap() {
-                        state_difference.insert(processed_assignment.0, processed_assignment.1);
-                        // .insert((processed_assignment.0, processed_assignment.1));
-                    }
-                }
-
-                println!("{:?}", processed_assignments);
+                update_diff_log(map, selection, &table_name, processed_assignments);
             } else {
                 panic_on_unsupported_behaviour("Update query with non-relation table");
                 return None;
@@ -75,6 +62,25 @@ pub fn get_diff(map: &mut StateDifferenceMap, query: &String) -> Option<StateDif
     }
 
     None
+}
+
+fn update_diff_log(
+    map: &mut StateDiffLog,
+    selection: Option<Expr>,
+    table_name: &String,
+    processed_assignments: Result<Vec<(String, Option<String>)>, &str>,
+) {
+    if !map.contains_key(table_name) {
+        map.insert(table_name.clone(), StateDifference::default());
+    }
+
+    let mut state_difference = map.get_mut(table_name).unwrap();
+    for processed_assignment in processed_assignments.unwrap() {
+        state_difference.insert(
+            (processed_assignment.0, selection.clone()),
+            processed_assignment.1,
+        );
+    }
 }
 
 fn process_assignments(
@@ -111,18 +117,6 @@ fn process_assignments(
     }
 
     Ok(processed_assignments)
-}
-
-fn process_selection(expr: Option<Expr>) -> Result<Vec<(String, String)>, &'static str> {
-    let processed_selections = Vec::new();
-
-    if let None = expr {
-        return Ok(processed_selections);
-    }
-
-    match expr {}
-
-    Ok(processed_selections)
 }
 
 fn panic_on_unsupported_behaviour(error: &str) {
