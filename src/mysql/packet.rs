@@ -8,6 +8,7 @@ pub struct Packet {
     pub header: PacketHeader,
     pub body: Vec<u8>,
     pub p_type: PacketType,
+    pub skip: bool,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -65,6 +66,7 @@ impl Packet {
             header,
             body,
             p_type,
+            skip: false,
         })
     }
 
@@ -306,6 +308,7 @@ impl OkData {
             },
             body,
             p_type: PacketType::Ok,
+            skip: false,
         }
     }
 }

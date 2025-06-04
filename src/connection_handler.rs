@@ -199,7 +199,7 @@ fn is_write_query(
     let parsed = Parser::parse_sql(&MySqlDialect {}, &last_command.arg);
 
     if parsed.is_ok() {
-        materialization::get_diff(diff, last_command_arg);
+        materialization::get_diff(diff, &last_command.arg);
         println!("{}", serde_json::to_string(&parsed.unwrap()).unwrap());
         println!("State: {:?}", diff);
     }

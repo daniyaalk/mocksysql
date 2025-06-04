@@ -1,7 +1,3 @@
-// pub fn process_leaf {
-//
-// }
-
 use sqlparser::ast::{BinaryOperator, Expr, Value};
 use std::collections::HashMap;
 
@@ -38,6 +34,7 @@ impl Parser for Parse {
                     Ok(EvaluateConjunction::evaluate(row, expr)?)
                 }
                 BinaryOperator::Eq => Ok(EvaluateCondition::evaluate(row, expr)?),
+                BinaryOperator::NotEq => Ok(EvaluateCondition::evaluate(row, expr)?),
                 _ => panic!(),
             },
             Expr::Value(val) => {
@@ -157,25 +154,46 @@ impl Parser for EvaluateCondition {
         row: &HashMap<String, Option<String>>,
         expr: &Box<Expr>,
     ) -> Result<ParseResult, &'static str> {
-        if let Expr::BinaryOp {
-            left,
-            op: BinaryOperator::Eq,
-            right,
-        } = &**expr
-        {
-            let parsed_left = Parse::evaluate(row, left)?;
-            let parsed_right = Parse::evaluate(row, right)?;
+        match &**expr {
+            Expr::BinaryOp {
+                left,
+                op: BinaryOperator::Eq,
+                right,
+            } => {
+                let parsed_left = Parse::evaluate(row, left)?;
+                let parsed_right = Parse::evaluate(row, right)?;
 
-            return match (parsed_left, parsed_right) {
-                (ParseResult::Boolean(l), ParseResult::Boolean(r)) => {
-                    Ok(ParseResult::Boolean(l == r))
-                }
-                (ParseResult::String(l), ParseResult::String(r)) => {
-                    Ok(ParseResult::Boolean(l == r))
-                }
-                _ => Ok(ParseResult::Boolean(false)),
-            };
+                return match (parsed_left, parsed_right) {
+                    (ParseResult::Boolean(l), ParseResult::Boolean(r)) => {
+                        Ok(ParseResult::Boolean(l == r))
+                    }
+                    (ParseResult::String(l), ParseResult::String(r)) => {
+                        Ok(ParseResult::Boolean(l == r))
+                    }
+                    _ => Ok(ParseResult::Boolean(false)),
+                };
+            }
+            Expr::BinaryOp {
+                left,
+                op: BinaryOperator::NotEq,
+                right,
+            } => {
+                let parsed_left = Parse::evaluate(row, left)?;
+                let parsed_right = Parse::evaluate(row, right)?;
+
+                return match (parsed_left, parsed_right) {
+                    (ParseResult::Boolean(l), ParseResult::Boolean(r)) => {
+                        Ok(ParseResult::Boolean(l != r))
+                    }
+                    (ParseResult::String(l), ParseResult::String(r)) => {
+                        Ok(ParseResult::Boolean(l != r))
+                    }
+                    _ => Ok(ParseResult::Boolean(true)),
+                };
+            }
+            _ => panic!(),
         }
+
         unreachable!();
     }
 }

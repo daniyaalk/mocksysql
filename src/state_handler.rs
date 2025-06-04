@@ -36,7 +36,9 @@ pub fn process_incoming_frame(
         packet_printer::print_packet(&packet);
 
         connection.phase = accumulator.consume(&mut packet, connection);
-        out_packets.push(packet);
+        if !packet.skip {
+            out_packets.push(packet);
+        }
 
         sync_connection_state(connection, accumulator);
 

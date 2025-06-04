@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 /**
 Divergence from the state of the original table will be stored as follows:
-Set<(column_name, Expr)> -> updated_value, provided all conditions stipulated in the set are satisfied.
+(Expr, HashMap<column_name, updated_value>), provided all conditions stipulated in the set are satisfied.
 TODO: Prevent conflict with multiple databases that have the same table names.
 TODO: Add accommodations for non-equality parameters.
 */

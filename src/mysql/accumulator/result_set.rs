@@ -25,6 +25,7 @@ pub struct ResponseAccumulator {
     accumulation_complete: bool,
     error: Option<ErrorData>,
     parsed_sql: Option<Vec<Statement>>,
+    skipped_packets: usize,
 }
 
 impl Accumulator for ResponseAccumulator {
@@ -138,6 +139,7 @@ impl Accumulator for ResponseAccumulator {
                         panic!("Unexpected packet type")
                     }
                 }
+                packet.header.seq -= self.skipped_packets as u8;
 
                 if packet.p_type == PacketType::Error || status_flags.is_some() {
                     // No further data in this result set
@@ -205,8 +207,8 @@ impl ResponseAccumulator {
         row
     }
 
-    fn override_row(&self, packet: &mut Packet, diff: &StateDifference) {
-        let row = self.parse_row(packet);
+    fn override_row(&mut self, packet: &mut Packet, diff: &StateDifference) {
+        let mut row = self.parse_row(packet);
         let mut new_body: Vec<u8> = Vec::new();
         let mut override_state = None;
 
@@ -226,6 +228,8 @@ impl ResponseAccumulator {
 
             if override_state.is_some() && override_state.unwrap().contains_key(column_name) {
                 value = override_state.unwrap().get(column_name).unwrap();
+                // Updating original hashmap to decide if row needs to be omitted in select queries based on new state.
+                row.insert(column_name.clone(), value.clone());
             }
 
             new_body.extend(match value {
@@ -234,9 +238,26 @@ impl ResponseAccumulator {
             })
         }
 
+        if let Some(statements) = &self.parsed_sql {
+            if let Some(Statement::Query(query_box)) = statements.last() {
+                let query = query_box.body.as_select();
+
+                if let Some(query) = query {
+                    if let Ok(ParseResult::Boolean(b)) =
+                        Parse::evaluate(&row, &Box::new(query.clone().selection.unwrap()))
+                    {
+                        if !b {
+                            self.skipped_packets += 1;
+                            packet.skip = true;
+                        }
+                    }
+                }
+            }
+        }
+
         packet.header = PacketHeader {
             size: new_body.len(),
-            seq: packet.header.seq,
+            seq: packet.header.seq, // Will be decremented by caller based on `self.skipped_packets`
         };
         packet.body = new_body;
     }
