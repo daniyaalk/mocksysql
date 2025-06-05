@@ -243,12 +243,14 @@ impl ResponseAccumulator {
                 let query = query_box.body.as_select();
 
                 if let Some(query) = query {
-                    if let Ok(ParseResult::Boolean(b)) =
-                        Parse::evaluate(&row, &Box::new(query.clone().selection.unwrap()))
-                    {
-                        if !b {
-                            self.skipped_packets += 1;
-                            packet.skip = true;
+                    if query.selection.is_some() {
+                        if let Ok(ParseResult::Boolean(b)) =
+                            Parse::evaluate(&row, &Box::new(query.clone().selection.unwrap()))
+                        {
+                            if !b {
+                                self.skipped_packets += 1;
+                                packet.skip = true;
+                            }
                         }
                     }
                 }

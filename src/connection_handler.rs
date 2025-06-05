@@ -165,7 +165,7 @@ fn get_write_response(last_command: Command, sequence: &u8, client_flag: u32) ->
     let ok_data = OkData {
         header: 0x00,
         affected_rows: 1,
-        last_insert_id: match last_command.arg.starts_with("INSERT ") {
+        last_insert_id: match last_command.arg.to_lowercase().starts_with("insert ") {
             true => count as u64,
             false => 0,
         },
