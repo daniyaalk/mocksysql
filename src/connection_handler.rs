@@ -7,8 +7,6 @@ use crate::tls::{handle_client_tls, handle_server_tls};
 use crate::{connection::Connection, materialization, state_handler};
 #[cfg(feature = "tls")]
 use rustls::StreamOwned;
-use sqlparser::dialect::MySqlDialect;
-use sqlparser::parser::Parser;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::sync::atomic::AtomicU8;
@@ -196,13 +194,7 @@ fn is_write_query(
             || last_command_arg.starts_with("update")
             || last_command_arg.starts_with("delete"));
 
-    let parsed = Parser::parse_sql(&MySqlDialect {}, &last_command.arg);
-
-    if parsed.is_ok() {
-        materialization::get_diff(diff, &last_command.arg);
-        println!("{}", serde_json::to_string(&parsed.unwrap()).unwrap());
-        println!("State: {:?}", diff);
-    }
+    materialization::get_diff(diff, &last_command.arg);
 
     ret
 }

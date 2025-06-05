@@ -24,11 +24,11 @@ pub type StateDiffLog = Arc<DashMap<String, StateDifference>>;
 
 const DIALECT: MySqlDialect = MySqlDialect {};
 
-pub fn get_diff(map: &mut StateDiffLog, query: &str) -> Option<StateDifference> {
+pub fn get_diff(map: &mut StateDiffLog, query: &str) {
     let ast = Parser::parse_sql(&DIALECT, query);
 
     if ast.is_err() {
-        return None;
+        return;
     }
 
     let statement = ast.unwrap();
@@ -48,7 +48,7 @@ pub fn get_diff(map: &mut StateDiffLog, query: &str) -> Option<StateDifference> 
 
                 if processed_assignments.is_err() {
                     panic_on_unsupported_behaviour(processed_assignments.err().unwrap());
-                    return None;
+                    return;
                 }
 
                 println!("{:?}", &processed_assignments);
@@ -56,12 +56,9 @@ pub fn get_diff(map: &mut StateDiffLog, query: &str) -> Option<StateDifference> 
                 update_diff_log(map, selection, &table_name, processed_assignments);
             } else {
                 panic_on_unsupported_behaviour("Update query with non-relation table");
-                return None;
             }
         }
     }
-
-    None
 }
 
 fn update_diff_log(
@@ -118,5 +115,7 @@ fn process_assignments(
 fn panic_on_unsupported_behaviour(error: &str) {
     if env::var("PANIC_ON_UNSUPPORTED_QUERY").is_ok_and(|val| val == "true") {
         panic!("{}", error);
+    } else {
+        println!("Ignoring unsupported query: {}", error);
     }
 }

@@ -146,8 +146,6 @@ impl Parser for EvaluateConjunction {
                         _ => unreachable!(),
                     }
                 }
-                BinaryOperator::Eq => Ok(EvaluateCondition::evaluate(row, expr)?),
-                BinaryOperator::Gt => Ok(EvaluateCondition::evaluate(row, right)?),
                 _ => panic!(),
             },
             _ => todo!(),
