@@ -5,6 +5,7 @@ use crate::mysql::packet::{OkData, Packet, PacketType};
 #[cfg(feature = "tls")]
 use crate::tls::{handle_client_tls, handle_server_tls};
 use crate::{connection::Connection, materialization, state_handler};
+use log::debug;
 #[cfg(feature = "tls")]
 use rustls::StreamOwned;
 use std::cell::RefCell;
@@ -54,11 +55,11 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
     loop {
         // Server Loop
         loop {
-            println!("Listening from server");
+            debug!("Listening from server");
 
             let read_bytes = read_bytes(&mut connection.server_connection, &mut buf)?;
 
-            println!("From server: {:?}", &buf[0..read_bytes].to_vec());
+            debug!("From server: {:?}", &buf[0..read_bytes].to_vec());
 
             if read_bytes == 0 {
                 return Ok(());
@@ -71,7 +72,7 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
             write_bytes(&mut connection.client_connection, encoded_bytes.as_slice());
 
             if SERVER_TRANSITION_PHASES.contains(&connection.phase) {
-                println!("Transitioning to client");
+                debug!("Transitioning to client");
                 break;
             }
         }
@@ -83,11 +84,11 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
                 connection = switch_to_tls(connection);
             }
 
-            println!("Listening from client: {:?}", &connection.phase);
+            debug!("Listening from client: {:?}", &connection.phase);
 
             let read_bytes = read_bytes(&mut connection.client_connection, &mut buf)?;
 
-            println!("From client: {:?}", &buf[0..read_bytes].to_vec());
+            debug!("From client: {:?}", &buf[0..read_bytes].to_vec());
 
             if read_bytes == 0 {
                 return Ok(());
@@ -105,7 +106,7 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
             write_bytes(&mut connection.server_connection, encoded_bytes.as_slice());
 
             if CLIENT_TRANSITION_PHASES.contains(&connection.phase) {
-                println!("Transitioning to server");
+                debug!("Transitioning to server");
                 break;
             }
         }
@@ -129,7 +130,7 @@ fn switch_to_tls(mut connection: Connection) -> Connection {
     }
 
     connection.phase = Phase::HandshakeResponse;
-    println!("TLS Set");
+    debug!("TLS Set");
     connection
 }
 
@@ -228,7 +229,7 @@ fn intercept_command(connection: &mut Connection, packets: &[Packet]) -> bool {
             &packets.first().unwrap().header.seq,
             client_flag.unwrap(),
         ) {
-            println!("{:?}", response);
+            debug!("{:?}", response);
             connection.phase = Phase::Command;
             write_bytes(&mut connection.client_connection, &response);
             return true;

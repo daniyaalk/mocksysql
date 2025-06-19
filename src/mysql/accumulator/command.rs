@@ -4,6 +4,7 @@ use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags}
 use crate::mysql::command::{Command, MySqlCommand};
 use crate::mysql::packet::Packet;
 use crate::mysql::types::{Converter, IntLenEnc};
+use log::debug;
 
 #[derive(Debug, Clone, Default)]
 pub struct CommandAccumulator {
@@ -57,11 +58,12 @@ impl Accumulator for CommandAccumulator {
 
                 if self.parameter_count.unwrap() > 0 {
                     // FIXME: Binary decoding not implemented
-                    offset += (self.parameter_count.unwrap() + 7) / 8;
+                    offset += self.parameter_count.unwrap().div_ceil(8);
 
                     self.new_params_bind_flag = {
                         let result = IntLenEnc::from_bytes(&body[offset..].to_vec(), Some(1));
                         offset += result.offset_increment;
+                        let _ = offset; // For future use
                         result.result as u8
                     };
 
@@ -75,7 +77,7 @@ impl Accumulator for CommandAccumulator {
             MySqlCommand::from_byte(packet.body[0]).unwrap(),
             &packet.body[offset..],
         ));
-        println!("Command details: {:?}", self.command);
+        debug!("Command details: {:?}", self.command);
         self.accumulation_complete = true;
         Phase::PendingResponse
     }

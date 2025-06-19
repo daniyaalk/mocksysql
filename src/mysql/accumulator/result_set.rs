@@ -7,6 +7,7 @@ use crate::mysql::packet::{
     EofData, ErrorData, OkData, Packet, PacketHeader, PacketType, ServerStatusFlags,
 };
 use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringLenEnc};
+use log::debug;
 use sqlparser::ast::Statement;
 use sqlparser::dialect::MySqlDialect;
 use std::collections::HashMap;
@@ -44,7 +45,7 @@ impl Accumulator for ResponseAccumulator {
         if packet.p_type == PacketType::Ok {
             let ok_data = OkData::from_packet(packet, connection);
             self.state = State::Complete;
-            println!("{:?}", ok_data);
+            debug!("{:?}", ok_data);
         }
 
         match self.state {
@@ -128,9 +129,9 @@ impl Accumulator for ResponseAccumulator {
                         status_flags = EofData::from_packet(packet, connection).status_flags
                     }
                     PacketType::Other => {
-                        if let Some(diff) = &connection
+                        if let Some(diff) = &mut connection
                             .diff
-                            .get(&self.columns.first().unwrap().org_table)
+                            .get_mut(&self.columns.first().unwrap().org_table)
                         {
                             self.override_row(packet, diff);
                         }
@@ -207,12 +208,12 @@ impl ResponseAccumulator {
         row
     }
 
-    fn override_row(&mut self, packet: &mut Packet, diff: &StateDifference) {
+    fn override_row(&mut self, packet: &mut Packet, diff: &mut StateDifference) {
         let mut row = self.parse_row(packet);
         let mut new_body: Vec<u8> = Vec::new();
         let mut override_state = None;
 
-        for state_changes in diff {
+        for state_changes in diff.iter().map(|(_, v)| v) {
             if state_changes.0.is_none() {
                 override_state = Some(&state_changes.1)
             } else if let Ok(ParseResult::Boolean(true)) =
@@ -366,7 +367,8 @@ impl ColumnDefinition {
             reserved: {
                 let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
                 offset += result.offset_increment;
-                // assert_eq!(offset, body.len());
+                let _ = offset; // for future use
+                                // assert_eq!(offset, body.len());
                 result.result as u16
             },
         }

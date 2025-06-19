@@ -1,4 +1,5 @@
 use crate::mysql::packet::Packet;
+use log::debug;
 
 pub fn print_packet(packet: &Packet) {
     let mut print_buffer = String::new();
@@ -41,7 +42,7 @@ pub fn print_packet(packet: &Packet) {
             row_buffer = "".to_string();
         }
     }
-    print_buffer.push_str("\n");
+    print_buffer.push('\n');
     print_buffer.push_str(format!("Packet type: {:?} \n", packet.p_type).as_str());
-    print!("{}", print_buffer);
+    debug!("{}", print_buffer);
 }

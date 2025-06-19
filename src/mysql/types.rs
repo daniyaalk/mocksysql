@@ -1,3 +1,4 @@
+use log::error;
 use std::collections::VecDeque;
 
 pub struct DecodeResult<T> {
@@ -13,6 +14,7 @@ pub trait Converter<T> {
     }
 }
 
+#[allow(dead_code)]
 pub trait FixedLengthConverter<T> {
     fn from_bytes(bytes: &[u8], length: usize) -> DecodeResult<T>;
     // TODO: Change implementations to use FixedLength Converter
@@ -174,7 +176,7 @@ impl Converter<String> for StringEOFEnc {
     fn from_bytes(bytes: &Vec<u8>, _length: Option<usize>) -> DecodeResult<String> {
         DecodeResult {
             result: String::from_utf8(bytes.to_vec()).unwrap_or_else(|_| {
-                println!("{:?}", bytes);
+                error!("{:?}", bytes);
                 panic!("Could not convert bytes to string!");
             }),
             offset_increment: bytes.len(),

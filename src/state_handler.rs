@@ -12,6 +12,7 @@ use crate::{
     connection::{Connection, Phase},
     mysql::packet::Packet,
 };
+use log::debug;
 
 enum PacketParseResult {
     Packet(Packet),
@@ -42,7 +43,7 @@ pub fn process_incoming_frame(
 
         sync_connection_state(connection, accumulator);
 
-        println!("{:?}", connection.get_state());
+        debug!("{:?}", connection.get_state());
     }
 
     out_packets

@@ -226,6 +226,7 @@ impl Parser for EvaluateCondition {
 #[cfg(test)]
 mod tests {
     use crate::materialization::evaluator::{Parse, Parser};
+    use log::debug;
     use sqlparser::ast::Statement;
     use sqlparser::dialect::MySqlDialect;
     use std::collections::HashMap;
@@ -244,7 +245,7 @@ mod tests {
 
         if let Statement::Update { selection, .. } = parsed_sql.first().unwrap() {
             let expr = selection.clone().unwrap();
-            println!("{:?}", Parse::evaluate(&row, &Box::from(expr)));
+            debug!("{:?}", Parse::evaluate(&row, &Box::from(expr)));
         }
     }
 }

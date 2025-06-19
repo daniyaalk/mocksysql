@@ -3,16 +3,12 @@ use crate::mysql::accumulator::handshake::HandshakeAccumulator;
 use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
 use crate::mysql::accumulator::result_set::ResponseAccumulator;
 use crate::mysql::command::Command;
-use dashmap::DashMap;
 #[cfg(feature = "tls")]
 use rustls::{ClientConnection, ServerConnection, StreamOwned};
 use std::cell::RefCell;
-use std::collections::BTreeSet;
 use std::net::TcpStream;
-use std::sync::Arc;
 
 #[allow(dead_code)]
-#[derive(Debug)]
 pub struct Connection {
     pub phase: Phase,
     pub partial_bytes: Option<Vec<u8>>,
@@ -49,8 +45,6 @@ impl Connection {
 
     #[cfg(test)]
     pub fn default() -> Connection {
-        let map = Arc::new(DashMap::<BTreeSet<(String, String)>, String>::new());
-
         Connection::new(
             SwitchableConnection::None,
             SwitchableConnection::None,

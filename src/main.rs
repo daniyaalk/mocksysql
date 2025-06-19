@@ -21,6 +21,8 @@ fn main() {
 
     let state_difference_map = StateDiffLog::default();
 
+    env_logger::init();
+
     match listener {
         Err(_) => println!("Error when binding to socket!"),
 
