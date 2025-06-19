@@ -147,7 +147,7 @@ pub fn read_bytes(conn: &mut SwitchableConnection, buf: &mut [u8]) -> Result<usi
 }
 
 pub fn write_bytes(conn: &mut SwitchableConnection, buf: &[u8]) {
-    match conn {
+    let _ = match conn {
         SwitchableConnection::Plain(stream) => stream.get_mut().write_all(buf),
         #[cfg(feature = "tls")]
         SwitchableConnection::ClientTls(stream_owned) => stream_owned.get_mut().write_all(buf),
@@ -155,8 +155,7 @@ pub fn write_bytes(conn: &mut SwitchableConnection, buf: &[u8]) {
         SwitchableConnection::ServerTls(stream_owned) => stream_owned.get_mut().write_all(buf),
         #[cfg(test)]
         SwitchableConnection::None => unreachable!(),
-    }
-    .expect("Failed to write to connection")
+    };
 }
 
 fn get_write_response(last_command: Command, sequence: &u8, client_flag: u32) -> Option<Vec<u8>> {

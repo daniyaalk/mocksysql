@@ -1,7 +1,11 @@
 use crate::mysql::packet::Packet;
-use log::debug;
+use log::{debug, log_enabled};
 
 pub fn print_packet(packet: &Packet) {
+    if !log_enabled!(log::Level::Debug) {
+        return;
+    }
+
     let mut print_buffer = String::new();
     // Print bounds
     print_buffer.push_str(
