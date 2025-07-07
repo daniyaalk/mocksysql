@@ -9,6 +9,12 @@ tls = ["dep:rustls", "dep:rcgen"]
 [dependencies]
 rustls = { version = "0.23.23", optional = true }
 rcgen = { version = "0.13.2", optional = true }
+sqlparser = { version = "0.56.0", features = ["serde"] }
+dashmap = "6.1.0"
+ttl_cache = "0.5.1"
+uuid = { version = "1.17.0", features = ["v4"] }
+env_logger = "0.11.8"
+log = "0.4.27"
 
 [profile.release]
 opt-level = 3

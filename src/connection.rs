@@ -1,3 +1,4 @@
+use crate::materialization::StateDiffLog;
 use crate::mysql::accumulator::handshake::HandshakeAccumulator;
 use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
 use crate::mysql::accumulator::result_set::ResponseAccumulator;
@@ -8,7 +9,6 @@ use std::cell::RefCell;
 use std::net::TcpStream;
 
 #[allow(dead_code)]
-#[derive(Debug)]
 pub struct Connection {
     pub phase: Phase,
     pub partial_bytes: Option<Vec<u8>>,
@@ -21,10 +21,15 @@ pub struct Connection {
     pub server_connection: SwitchableConnection,
 
     query_response: ResponseAccumulator,
+    pub diff: StateDiffLog,
 }
 
 impl Connection {
-    pub fn new(server: SwitchableConnection, client: SwitchableConnection) -> Connection {
+    pub fn new(
+        server: SwitchableConnection,
+        client: SwitchableConnection,
+        state_difference_map: StateDiffLog,
+    ) -> Connection {
         Connection {
             client_connection: client,
             server_connection: server,
@@ -34,12 +39,17 @@ impl Connection {
             handshake: None,
             handshake_response: None,
             query_response: ResponseAccumulator::default(),
+            diff: state_difference_map,
         }
     }
 
     #[cfg(test)]
     pub fn default() -> Connection {
-        Connection::new(SwitchableConnection::None, SwitchableConnection::None)
+        Connection::new(
+            SwitchableConnection::None,
+            SwitchableConnection::None,
+            StateDiffLog::default(),
+        )
     }
 
     pub fn get_state(&self) -> &Phase {

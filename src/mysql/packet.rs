@@ -8,6 +8,7 @@ pub struct Packet {
     pub header: PacketHeader,
     pub body: Vec<u8>,
     pub p_type: PacketType,
+    pub skip: bool,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -65,6 +66,7 @@ impl Packet {
             header,
             body,
             p_type,
+            skip: false,
         })
     }
 
@@ -241,6 +243,7 @@ impl OkData {
             warnings = Some({
                 let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
                 offset += result.offset_increment;
+                let _ = offset; // for future use
                 result.result as u16
             })
         } else if connection.get_handshake_response().unwrap().client_flag
@@ -250,6 +253,7 @@ impl OkData {
             status_flags = Some({
                 let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
                 offset += result.offset_increment;
+                let _ = offset; // for future use
                 result.result as u16
             })
         }
@@ -306,6 +310,7 @@ impl OkData {
             },
             body,
             p_type: PacketType::Ok,
+            skip: false,
         }
     }
 }

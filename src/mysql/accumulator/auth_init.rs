@@ -10,7 +10,7 @@ pub struct AuthInitAccumulator {
 }
 
 impl Accumulator for AuthInitAccumulator {
-    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
+    fn consume(&mut self, packet: &mut Packet, connection: &Connection) -> Phase {
         // https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_connection_phase_packets_protocol_auth_switch_request.html
         if packet.body[0] == 0xfe {
             self.accumulation_complete = true;

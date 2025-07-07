@@ -1,8 +1,16 @@
 use crate::connection::{Connection, Phase};
+use crate::materialization::evaluator::{Parse, ParseResult, Parser};
+use crate::materialization::StateDifference;
 use crate::mysql::accumulator::{AccumulationDelta, Accumulator, CapabilityFlags};
 use crate::mysql::command::MySqlCommand;
-use crate::mysql::packet::{EofData, ErrorData, OkData, Packet, PacketType, ServerStatusFlags};
+use crate::mysql::packet::{
+    EofData, ErrorData, OkData, Packet, PacketHeader, PacketType, ServerStatusFlags,
+};
 use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringLenEnc};
+use log::debug;
+use sqlparser::ast::Statement;
+use sqlparser::dialect::MySqlDialect;
+use std::collections::HashMap;
 
 #[derive(Debug, Default, Clone)]
 pub struct ResponseAccumulator {
@@ -17,10 +25,12 @@ pub struct ResponseAccumulator {
     column_count: usize,
     accumulation_complete: bool,
     error: Option<ErrorData>,
+    parsed_sql: Option<Vec<Statement>>,
+    skipped_packets: usize,
 }
 
 impl Accumulator for ResponseAccumulator {
-    fn consume(&mut self, packet: &Packet, connection: &Connection) -> Phase {
+    fn consume(&mut self, packet: &mut Packet, connection: &Connection) -> Phase {
         let mut next_phase = connection.phase.clone();
 
         if connection.get_last_command().is_none() {
@@ -35,7 +45,7 @@ impl Accumulator for ResponseAccumulator {
         if packet.p_type == PacketType::Ok {
             let ok_data = OkData::from_packet(packet, connection);
             self.state = State::Complete;
-            println!("{:?}", ok_data);
+            debug!("{:?}", ok_data);
         }
 
         match self.state {
@@ -56,20 +66,31 @@ impl Accumulator for ResponseAccumulator {
                 } else {
                     self.state = State::Complete;
                 }
+
+                self.parsed_sql = sqlparser::parser::Parser::parse_sql(
+                    &MySqlDialect {},
+                    &connection.get_last_command().unwrap().arg,
+                )
+                .ok();
+
                 next_phase = self.consume(packet, connection)
             }
             State::MetaExchange => {
                 self.metadata_follows = {
                     let result = IntLenEnc::from_bytes(&packet.body, Some(1));
-                    result.result == 0
+                    result.result == 1
                 };
                 self.state = State::ColumnCount;
             }
             State::ColumnCount => {
                 self.column_count = IntLenEnc::from_bytes(&packet.body, None).result as usize;
-                self.state = State::HydrateColumns;
-                if !self.metadata_follows {
-                    self.state = State::ColumnsHydrated;
+                self.state = State::ColumnsHydrated;
+                if (connection.get_handshake_response().unwrap().client_flag
+                    & CapabilityFlags::ClientOptionalResultSetMetadata as u32
+                    == 0)
+                    || self.metadata_follows
+                {
+                    self.state = State::HydrateColumns;
                 }
             }
             State::HydrateColumns => {
@@ -98,32 +119,42 @@ impl Accumulator for ResponseAccumulator {
                 }
             }
             State::HydrateRows => {
-                if packet.get_packet_type() != PacketType::Other {
-                    let mut status_flags: Option<u16> = None;
+                let mut status_flags: Option<u16> = None;
 
-                    match packet.get_packet_type() {
-                        PacketType::Ok => {
-                            status_flags = OkData::from_packet(packet, connection).status_flags
-                        }
-                        PacketType::Eof => {
-                            status_flags = EofData::from_packet(packet, connection).status_flags
-                        }
-                        _ => (),
+                match packet.get_packet_type() {
+                    PacketType::Ok => {
+                        status_flags = OkData::from_packet(packet, connection).status_flags
                     }
+                    PacketType::Eof => {
+                        status_flags = EofData::from_packet(packet, connection).status_flags
+                    }
+                    PacketType::Other => {
+                        if let Some(diff) = &mut connection
+                            .diff
+                            .get_mut(&self.columns.first().unwrap().org_table)
+                        {
+                            self.override_row(packet, diff);
+                        }
+                    }
+                    _ => {
+                        panic!("Unexpected packet type")
+                    }
+                }
+                packet.header.seq -= self.skipped_packets as u8;
 
-                    if packet.p_type == PacketType::Error
-                        || (status_flags.is_some()
-                            && (status_flags.unwrap()
-                                & ServerStatusFlags::ServerMoreResultsExist as u16
-                                == 0))
+                if packet.p_type == PacketType::Error || status_flags.is_some() {
+                    // No further data in this result set
+                    self.state = State::Complete;
+
+                    // Query returns multiple Result sets
+                    if status_flags.is_some()
+                        && status_flags.unwrap() & ServerStatusFlags::ServerMoreResultsExist as u16
+                            != 0
                     {
-                        // No further Result Sets remaining
-                        self.state = State::Complete;
-                        next_phase = self.consume(packet, connection);
-                    } else {
-                        // More ResultSets in Pipeline
                         self.state = State::Initiated;
                     }
+
+                    next_phase = self.consume(packet, connection);
                 }
             }
             State::Complete => {
@@ -144,6 +175,94 @@ impl Accumulator for ResponseAccumulator {
             response: Some(self.clone()), // yuck
             ..AccumulationDelta::default()
         })
+    }
+}
+
+impl ResponseAccumulator {
+    fn parse_row(&self, packet: &Packet) -> HashMap<String, Option<String>> {
+        let mut row = HashMap::new();
+
+        let mut i = 0;
+        let mut column_index = 0;
+        let bytes = packet.body.as_slice();
+
+        while i < packet.body.len() {
+            if bytes[i] == 0xfb {
+                row.insert(
+                    self.columns.get(column_index).unwrap().org_name.clone(),
+                    None,
+                );
+                i += 1;
+            } else {
+                let field = StringLenEnc::from_bytes(&bytes[i..].to_vec(), None);
+                row.insert(
+                    self.columns.get(column_index).unwrap().org_name.clone(),
+                    Some(field.result),
+                );
+                i += field.offset_increment;
+            }
+
+            column_index += 1;
+        }
+
+        row
+    }
+
+    fn override_row(&mut self, packet: &mut Packet, diff: &mut StateDifference) {
+        let mut row = self.parse_row(packet);
+        let mut new_body: Vec<u8> = Vec::new();
+        let mut override_state = None;
+
+        for state_changes in diff.iter().map(|(_, v)| v) {
+            if state_changes.0.is_none() {
+                override_state = Some(&state_changes.1)
+            } else if let Ok(ParseResult::Boolean(true)) =
+                Parse::evaluate(&row, &Box::new(state_changes.0.clone().unwrap()))
+            {
+                override_state = Some(&state_changes.1)
+            }
+        }
+
+        for i in 0..row.len() {
+            let column_name = &self.columns.get(i).unwrap().org_name;
+            let mut value = row.get(column_name).unwrap();
+
+            if override_state.is_some() && override_state.unwrap().contains_key(column_name) {
+                value = override_state.unwrap().get(column_name).unwrap();
+                // Updating original hashmap to decide if row needs to be omitted in select queries based on new state.
+                row.insert(column_name.clone(), value.clone());
+            }
+
+            new_body.extend(match value {
+                None => vec![0xfbu8],
+                Some(value) => StringLenEnc::encode(value.clone(), None),
+            })
+        }
+
+        if let Some(statements) = &self.parsed_sql {
+            if let Some(Statement::Query(query_box)) = statements.last() {
+                let query = query_box.body.as_select();
+
+                if let Some(query) = query {
+                    if query.selection.is_some() {
+                        if let Ok(ParseResult::Boolean(b)) =
+                            Parse::evaluate(&row, &Box::new(query.clone().selection.unwrap()))
+                        {
+                            if !b {
+                                self.skipped_packets += 1;
+                                packet.skip = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        packet.header = PacketHeader {
+            size: new_body.len(),
+            seq: packet.header.seq, // Will be decremented by caller based on `self.skipped_packets`
+        };
+        packet.body = new_body;
     }
 }
 
@@ -248,7 +367,8 @@ impl ColumnDefinition {
             reserved: {
                 let result = IntFixedLen::from_bytes(&body[offset..].to_vec(), Some(2));
                 offset += result.offset_increment;
-                // assert_eq!(offset, body.len());
+                let _ = offset; // for future use
+                                // assert_eq!(offset, body.len());
                 result.result as u16
             },
         }

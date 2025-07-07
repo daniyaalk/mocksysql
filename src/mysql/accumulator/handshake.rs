@@ -29,7 +29,7 @@ pub struct HandshakeAccumulator {
 }
 
 impl Accumulator for HandshakeAccumulator {
-    fn consume(&mut self, packet: &Packet, _connection: &Connection) -> Phase {
+    fn consume(&mut self, packet: &mut Packet, _connection: &Connection) -> Phase {
         let mut offset: usize = 0;
 
         let protocol_version = {
@@ -172,7 +172,7 @@ mod tests {
 
     #[test]
     fn test_handshake() {
-        let packet = Packet::from_bytes(
+        let mut packet = Packet::from_bytes(
             &[
                 0x4a, 0x00, 0x00, 0x00, 0x0a, 0x38, 0x2e, 0x30, 0x2e, 0x33, 0x32, 0x00, 0x0a, 0x00,
                 0x00, 0x00, 0x15, 0x51, 0x79, 0x32, 0x2c, 0x6e, 0x09, 0x77, 0x00, 0xff, 0xff, 0xff,
@@ -187,7 +187,7 @@ mod tests {
         let connection = Connection::default();
 
         let mut handshake = HandshakeAccumulator::default();
-        handshake.consume(&packet, &connection);
+        handshake.consume(&mut packet, &connection);
 
         println!("{:?}", handshake);
         // TODO: Add assertions

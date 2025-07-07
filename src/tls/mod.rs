@@ -1,3 +1,4 @@
+use log::debug;
 use rcgen::{generate_simple_self_signed, CertifiedKey};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, IpAddr, Ipv4Addr, PrivateKeyDer, ServerName, UnixTime};
@@ -67,7 +68,7 @@ pub fn handle_client_tls() -> rustls::ServerConnection {
         )
         .unwrap();
     let server_config = Arc::new(server_config);
-    println!("Client tls done!");
+    debug!("Client tls done!");
     rustls::ServerConnection::new(server_config).unwrap()
 }
 
@@ -82,6 +83,6 @@ pub fn handle_server_tls() -> rustls::ClientConnection {
         ServerName::IpAddress(IpAddr::V4(Ipv4Addr::try_from("127.0.0.1").unwrap())),
     )
     .unwrap();
-    println!("Server tls done!");
+    debug!("Server tls done!");
     client
 }
