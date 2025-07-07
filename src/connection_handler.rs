@@ -10,8 +10,11 @@ use log::debug;
 use rustls::StreamOwned;
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::io::ErrorKind;
+use std::str::FromStr;
 use std::sync::atomic::AtomicU8;
 use std::sync::LazyLock;
+use std::time::Duration;
 use std::{
     env,
     io::{Error, Read, Write},
@@ -51,6 +54,10 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
     let mut buf: [u8; 4096] = [0; 4096];
 
     let mut packets;
+    let inject_delay = match env::var("INJECT_DELAY") {
+        Ok(val) => u64::from_str(&*val),
+        Err(err) => return Err(Error::new(ErrorKind::Other, err)),
+    };
 
     loop {
         // Server Loop
@@ -78,6 +85,7 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
         }
 
         // client loop
+        let mut delay_completed = false;
         loop {
             #[cfg(feature = "tls")]
             if connection.phase == Phase::TlsExchange {
@@ -87,6 +95,13 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
             debug!("Listening from client: {:?}", &connection.phase);
 
             let read_bytes = read_bytes(&mut connection.client_connection, &mut buf)?;
+
+            if !delay_completed && inject_delay.is_ok() {
+                let duration = inject_delay.clone().unwrap();
+                debug!("Delaying for {} milliseconds", duration);
+                thread::sleep(Duration::from_millis(duration));
+                delay_completed = true;
+            }
 
             debug!("From client: {:?}", &buf[0..read_bytes].to_vec());
 
