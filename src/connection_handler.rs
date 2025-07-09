@@ -55,8 +55,8 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
 
     let mut packets;
     let inject_delay = match env::var("INJECT_DELAY") {
-        Ok(val) => u64::from_str(&*val),
-        Err(err) => return Err(Error::new(ErrorKind::Other, err)),
+        Ok(val) => u64::from_str(&val),
+        Err(_) => Ok(0),
     };
 
     loop {
@@ -98,9 +98,11 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
 
             if !delay_completed && inject_delay.is_ok() {
                 let duration = inject_delay.clone().unwrap();
-                debug!("Delaying for {} milliseconds", duration);
-                thread::sleep(Duration::from_millis(duration));
-                delay_completed = true;
+                if duration > 0 {
+                    debug!("Delaying for {} milliseconds", duration);
+                    thread::sleep(Duration::from_millis(duration));
+                    delay_completed = true;
+                }
             }
 
             debug!("From client: {:?}", &buf[0..read_bytes].to_vec());
