@@ -10,7 +10,6 @@ use log::{debug, error};
 use rustls::StreamOwned;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::io::ErrorKind;
 use std::str::FromStr;
 use std::sync::atomic::AtomicU8;
 use std::sync::LazyLock;
