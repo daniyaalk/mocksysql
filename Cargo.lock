@@ -442,6 +442,7 @@ dependencies = [
  "dashmap",
  "env_logger",
  "log",
+ "once_cell",
  "rcgen",
  "rustls",
  "sqlparser",
