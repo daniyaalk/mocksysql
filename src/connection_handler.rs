@@ -6,6 +6,7 @@ use crate::mysql::packet::{OkData, Packet, PacketType};
 use crate::tls::{handle_client_tls, handle_server_tls};
 use crate::{connection::Connection, materialization, state_handler};
 use log::{debug, error};
+use once_cell::sync::Lazy;
 #[cfg(feature = "tls")]
 use rustls::StreamOwned;
 use std::cell::RefCell;
@@ -28,6 +29,15 @@ static SERVER_TRANSITION_PHASES: LazyLock<HashSet<Phase>> = LazyLock::new(|| {
         Phase::Command,
         Phase::AuthSwitchResponse,
     ])
+});
+
+static INTERCEPT_WRITES: Lazy<String> =
+    Lazy::new(|| env::var("INTERCEPT_WRITES").unwrap_or_else(|_| "false".to_string()));
+
+static DELAY_VARS: Lazy<HashMap<String, String>> = Lazy::new(|| {
+    env::vars()
+        .filter(|(k, _)| k.starts_with("DELAY_"))
+        .collect()
 });
 
 static CLIENT_TRANSITION_PHASES: LazyLock<HashSet<Phase>> =
@@ -53,9 +63,7 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
     let mut buf: [u8; 4096] = [0; 4096];
 
     let mut packets;
-    let delay_vars: HashMap<String, String> = env::vars()
-        .filter(|(k, _)| k.starts_with("DELAY_"))
-        .collect();
+
     loop {
         // Server Loop
         loop {
@@ -102,8 +110,8 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
 
             let encoded_bytes = state_handler::generate_outgoing_frame(&packets);
 
-            if !delay_vars.is_empty() {
-                delay_if_required(&connection.last_command, &delay_vars);
+            if !DELAY_VARS.is_empty() {
+                delay_if_required(&connection.last_command, &DELAY_VARS);
             }
 
             if intercept_enabled() && intercept_command(&mut connection, &packets) {
@@ -237,7 +245,7 @@ fn is_write_query(
 }
 
 fn intercept_enabled() -> bool {
-    env::var("INTERCEPT_WRITES").is_ok() && env::var("INTERCEPT_WRITES").unwrap() == "true"
+    *INTERCEPT_WRITES == "true"
 }
 
 fn intercept_command(connection: &mut Connection, packets: &[Packet]) -> bool {
