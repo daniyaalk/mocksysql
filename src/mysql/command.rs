@@ -8,7 +8,11 @@ pub struct Command {
 impl Command {
     pub fn from_bytes(code: MySqlCommand, bytes: &[u8]) -> Command {
         let com_code = code;
-        let arg = String::from_utf8(bytes.to_vec()).expect("Unable to convert bytes to string");
+
+        let arg = match com_code {
+            MySqlCommand::ComStmtExecute => "".to_string(),
+            _ => String::from_utf8(bytes.to_vec()).expect("Unable to convert bytes to string"),
+        };
         Command { com_code, arg }
     }
 }

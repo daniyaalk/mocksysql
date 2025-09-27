@@ -61,7 +61,12 @@ impl Accumulator for ResponseAccumulator {
                     self.state = State::Complete;
                     debug!("{:?}", ok_data);
                 }
-                next_phase = self.process_result_set(packet, connection, current_phase);
+
+                if last_command.com_code == MySqlCommand::ComStmtExecute {
+                    next_phase = self.process_binary_result_set(packet, connection, current_phase);
+                } else {
+                    next_phase = self.process_result_set(packet, connection, current_phase);
+                }
             }
         }
         next_phase
@@ -164,6 +169,18 @@ impl ResponseAccumulator {
             seq: packet.header.seq, // Will be decremented by caller based on `self.skipped_packets`
         };
         packet.body = new_body;
+    }
+
+    fn process_binary_result_set(
+        &self,
+        packet: &mut Packet,
+        connectiton: &Connection,
+        current_phase: Phase,
+    ) -> Phase {
+        if packet.p_type == PacketType::Eof {
+            return Phase::Command;
+        }
+        current_phase
     }
 
     fn process_stmt_prepare(

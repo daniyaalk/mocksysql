@@ -7,7 +7,6 @@ use crate::mysql::accumulator::Accumulator;
 use crate::mysql::accumulator::{
     handshake::HandshakeAccumulator, handshake_response::HandshakeResponseAccumulator,
 };
-use crate::mysql::command::Command;
 use crate::util::packet_printer;
 use crate::{
     connection::{Connection, Phase},
