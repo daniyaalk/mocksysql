@@ -97,6 +97,8 @@ fn update_diff_log(
 
     CACHE_TTL.write().unwrap().replace(ttl.as_secs());
 
+    // YUCKKKKKKK. THIS IS TRASH.
+
     state_difference.insert(
         Uuid::new_v4().to_string(),
         (selection, processed_assignments.unwrap()),
