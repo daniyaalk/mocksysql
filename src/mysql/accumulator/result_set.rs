@@ -50,6 +50,7 @@ impl Accumulator for ResponseAccumulator {
             }
             MySqlCommand::ComStmtReset => next_phase = Phase::Command,
             _ => {
+
                 // Process Result Set
                 if packet.p_type == PacketType::Error {
                     self.state = State::Complete;
@@ -174,10 +175,10 @@ impl ResponseAccumulator {
     fn process_binary_result_set(
         &self,
         packet: &mut Packet,
-        connectiton: &Connection,
+        connection: &Connection,
         current_phase: Phase,
     ) -> Phase {
-        if packet.p_type == PacketType::Eof {
+        if packet.p_type == PacketType::Eof  || (packet.header.seq == 01 && packet.p_type == PacketType::Ok) {
             return Phase::Command;
         }
         current_phase
@@ -239,21 +240,17 @@ impl ResponseAccumulator {
                 self.params.push(ColumnDefinition::from_packet(packet));
 
                 if self.params.len() == self.param_count {
-                    self.state = State::ParamsHydrated;
-                }
-            }
-            State::ParamsHydrated => {
-                if self.column_count > 0 {
-                    self.state = State::HydrateColumns;
-                    next_phase = self.consume(packet, connection);
-                } else {
-                    self.state = State::Complete;
-                    next_phase = self.consume(packet, connection);
+                    if self.column_count > 0 {
+                        self.state = State::HydrateColumns;
+                    } else {
+                        self.state = State::Complete;
+                        next_phase = self.consume(packet, connection);
+                    }
+
                 }
             }
             State::HydrateColumns => {
                 self.columns.push(ColumnDefinition::from_packet(packet));
-
                 if self.columns.len() == self.column_count {
                     self.state = State::Complete;
                     next_phase = self.consume(packet, connection);

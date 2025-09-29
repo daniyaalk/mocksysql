@@ -73,13 +73,20 @@ impl Accumulator for CommandAccumulator {
             }
         }
 
-        self.command = Some(Command::from_bytes(
+        let command = Command::from_bytes(
             MySqlCommand::from_byte(packet.body[0]).unwrap(),
             &packet.body[offset..],
-        ));
+        );
+
+        let next_phase =
+        match command.com_code{ MySqlCommand::ComStmtClose => Phase::Command,
+            _ => Phase::PendingResponse
+        };
+
+        self.command = Some(command);
         debug!("Command details: {:?}", self.command);
         self.accumulation_complete = true;
-        Phase::PendingResponse
+        next_phase
     }
 
     fn accumulation_complete(&self) -> bool {
