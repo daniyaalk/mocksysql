@@ -1,19 +1,24 @@
-use crate::connection::{Phase, SwitchableConnection};
+use crate::connection::{KafkaProducerConfig, Phase, SwitchableConnection};
 use crate::materialization::StateDiffLog;
+use crate::mysql::command::MySqlCommand::ComQuery;
 use crate::mysql::command::{Command, MySqlCommand};
 use crate::mysql::packet::{OkData, Packet, PacketType};
 #[cfg(feature = "tls")]
 use crate::tls::{handle_client_tls, handle_server_tls};
 use crate::{connection::Connection, materialization, state_handler};
+use base64::Engine;
+use kafka::producer::Record;
 use log::{debug, error};
 use once_cell::sync::Lazy;
 #[cfg(feature = "tls")]
 use rustls::StreamOwned;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::env::VarError;
+use std::fs::File;
 use std::str::FromStr;
 use std::sync::atomic::AtomicU8;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 use std::{
     env,
@@ -43,7 +48,11 @@ static DELAY_VARS: Lazy<HashMap<String, String>> = Lazy::new(|| {
 static CLIENT_TRANSITION_PHASES: LazyLock<HashSet<Phase>> =
     LazyLock::new(|| HashSet::from([Phase::AuthInit, Phase::PendingResponse, Phase::AuthComplete]));
 
-pub fn initiate(client: TcpStream, state_difference_map: StateDiffLog) {
+pub fn initiate(
+    client: TcpStream,
+    state_difference_map: StateDiffLog,
+    kafka_config: KafkaProducerConfig,
+) {
     let target_address = env::var("TARGET_ADDRESS").unwrap_or_else(|_| "127.0.0.1:3307".to_owned());
 
     let server = TcpStream::connect(target_address).expect("Fault");
@@ -52,6 +61,7 @@ pub fn initiate(client: TcpStream, state_difference_map: StateDiffLog) {
         SwitchableConnection::Plain(RefCell::new(server)),
         SwitchableConnection::Plain(RefCell::new(client)),
         state_difference_map,
+        kafka_config,
     );
 
     let worker = thread::spawn(move || exchange(connection));
@@ -118,6 +128,21 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
                 // Connection returns to command phase if the query is intercepted, so the client loop needs to be started again.
                 continue;
             }
+
+            if let Some(command) = &connection.last_command {
+                if let Some((topic, producer)) = &connection.kafka_producer_config {
+                    let payload = format!(
+                        "{{\"last_command\": \"{}\", \"output\": \"{}\"}}\n",
+                        escape_json(&command.arg),
+                        base64::engine::general_purpose::STANDARD.encode(&encoded_bytes),
+                    );
+
+                    let mut handle = producer.lock().unwrap();
+                    let res = handle.send(&Record::from_value(&topic, payload.as_bytes().to_vec()));
+                    debug!("Kafka response: {:?}", res);
+                }
+            }
+
 
             write_bytes(&mut connection.server_connection, encoded_bytes.as_slice());
 
@@ -281,4 +306,13 @@ fn intercept_command(connection: &mut Connection, packets: &[Packet]) -> bool {
     }
 
     false
+}
+
+fn escape_json(user_input: &str) -> String {
+    user_input
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
 }

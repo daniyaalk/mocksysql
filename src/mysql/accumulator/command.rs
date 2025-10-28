@@ -78,9 +78,9 @@ impl Accumulator for CommandAccumulator {
             &packet.body[offset..],
         );
 
-        let next_phase =
-        match command.com_code{ MySqlCommand::ComStmtClose => Phase::Command,
-            _ => Phase::PendingResponse
+        let next_phase = match command.com_code {
+            MySqlCommand::ComStmtClose => Phase::Command,
+            _ => Phase::PendingResponse,
         };
 
         self.command = Some(command);

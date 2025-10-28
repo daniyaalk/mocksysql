@@ -3,11 +3,16 @@ use crate::mysql::accumulator::handshake::HandshakeAccumulator;
 use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
 use crate::mysql::accumulator::result_set::ResponseAccumulator;
 use crate::mysql::command::Command;
+use kafka::consumer::Consumer;
+use kafka::producer::Producer;
 #[cfg(feature = "tls")]
 use rustls::{ClientConnection, ServerConnection, StreamOwned};
 use std::cell::RefCell;
+use std::fs::File;
 use std::net::TcpStream;
+use std::sync::{Arc, Mutex};
 
+pub type KafkaProducerConfig = Option<(String, Arc<Mutex<Producer>>)>;
 #[allow(dead_code)]
 pub struct Connection {
     pub phase: Phase,
@@ -22,6 +27,7 @@ pub struct Connection {
 
     query_response: ResponseAccumulator,
     pub diff: StateDiffLog,
+    pub kafka_producer_config: KafkaProducerConfig,
 }
 
 impl Connection {
@@ -29,6 +35,7 @@ impl Connection {
         server: SwitchableConnection,
         client: SwitchableConnection,
         state_difference_map: StateDiffLog,
+        kafka_config: KafkaProducerConfig,
     ) -> Connection {
         Connection {
             client_connection: client,
@@ -40,6 +47,7 @@ impl Connection {
             handshake_response: None,
             query_response: ResponseAccumulator::default(),
             diff: state_difference_map,
+            kafka_producer_config: kafka_config,
         }
     }
 
@@ -49,6 +57,7 @@ impl Connection {
             SwitchableConnection::None,
             SwitchableConnection::None,
             StateDiffLog::default(),
+            None,
         )
     }
 

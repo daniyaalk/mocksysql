@@ -50,7 +50,6 @@ impl Accumulator for ResponseAccumulator {
             }
             MySqlCommand::ComStmtReset => next_phase = Phase::Command,
             _ => {
-
                 // Process Result Set
                 if packet.p_type == PacketType::Error {
                     self.state = State::Complete;
@@ -178,7 +177,9 @@ impl ResponseAccumulator {
         connection: &Connection,
         current_phase: Phase,
     ) -> Phase {
-        if packet.p_type == PacketType::Eof  || (packet.header.seq == 01 && packet.p_type == PacketType::Ok) {
+        if packet.p_type == PacketType::Eof
+            || (packet.header.seq == 01 && packet.p_type == PacketType::Ok)
+        {
             return Phase::Command;
         }
         current_phase
@@ -246,7 +247,6 @@ impl ResponseAccumulator {
                         self.state = State::Complete;
                         next_phase = self.consume(packet, connection);
                     }
-
                 }
             }
             State::HydrateColumns => {

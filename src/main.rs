@@ -1,7 +1,12 @@
 use crate::materialization::StateDiffLog;
+use kafka::producer::{Producer, RequiredAcks};
+use log::error;
 use std::env;
+use std::fs::{File, OpenOptions};
 use std::net::TcpListener;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use crate::connection::KafkaProducerConfig;
 
 mod connection;
 mod connection_handler;
@@ -23,6 +28,23 @@ fn main() {
 
     env_logger::init();
 
+    let mut kafka_producer: KafkaProducerConfig = None;
+    if let Ok(value) = env::var("kafka_replay_log_enable") {
+        if value == "true" {
+            let kafka_host = env::var("KAFKA_HOST").expect("KAFKA_HOST is not set");
+            let kafka_topic = env::var("KAFKA_TOPIC").expect("KAFKA_TOPIC is not set");
+
+            let producer=
+                Producer::from_hosts(kafka_host.split(",").map(|s| s.to_string()).collect())
+                    .with_ack_timeout(Duration::from_secs(1))
+                    .with_required_acks(RequiredAcks::One)
+                    .create()
+                    .unwrap();
+
+            kafka_producer = Some((kafka_topic, Arc::new(Mutex::new(producer))));
+        }
+    }
+
     match listener {
         Err(_) => println!("Error when binding to socket!"),
 
@@ -32,10 +54,15 @@ fn main() {
                     Err(_) => println!("Error establishing connection!"),
 
                     Ok(client_stream) => {
-                        let state_difference_map = Arc::clone(&state_difference_map);
 
+                        let kafka_producer = kafka_producer.clone();
+                        let state_difference_map = Arc::clone(&state_difference_map);
                         std::thread::spawn(move || {
-                            connection_handler::initiate(client_stream, state_difference_map)
+                            connection_handler::initiate(
+                                client_stream,
+                                state_difference_map,
+                                kafka_producer,
+                            )
                         });
                     }
                 }
