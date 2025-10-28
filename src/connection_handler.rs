@@ -1,5 +1,5 @@
 use crate::connection::{KafkaProducerConfig, Phase, SwitchableConnection};
-use crate::materialization::StateDiffLog;
+use crate::materialization::{ReplayLog, StateDiffLog};
 use crate::mysql::command::MySqlCommand::ComQuery;
 use crate::mysql::command::{Command, MySqlCommand};
 use crate::mysql::packet::{OkData, Packet, PacketType};
@@ -61,6 +61,7 @@ pub fn initiate(
         SwitchableConnection::Plain(RefCell::new(server)),
         SwitchableConnection::Plain(RefCell::new(client)),
         state_difference_map,
+        ReplayLog::default(),
         kafka_config,
     );
 

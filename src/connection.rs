@@ -1,4 +1,4 @@
-use crate::materialization::StateDiffLog;
+use crate::materialization::{ReplayLog, StateDiffLog};
 use crate::mysql::accumulator::handshake::HandshakeAccumulator;
 use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
 use crate::mysql::accumulator::result_set::ResponseAccumulator;
@@ -11,8 +11,11 @@ use std::cell::RefCell;
 use std::fs::File;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
+use serde::Deserialize;
 
 pub type KafkaProducerConfig = Option<(String, Arc<Mutex<Producer>>)>;
+pub type KafkaConsumerConfig = Option<(String, Arc<Mutex<Consumer>>)>;
+
 #[allow(dead_code)]
 pub struct Connection {
     pub phase: Phase,
@@ -27,6 +30,7 @@ pub struct Connection {
 
     query_response: ResponseAccumulator,
     pub diff: StateDiffLog,
+    pub replay: ReplayLog,
     pub kafka_producer_config: KafkaProducerConfig,
 }
 
@@ -35,6 +39,7 @@ impl Connection {
         server: SwitchableConnection,
         client: SwitchableConnection,
         state_difference_map: StateDiffLog,
+        replay_map: ReplayLog,
         kafka_config: KafkaProducerConfig,
     ) -> Connection {
         Connection {
@@ -47,6 +52,7 @@ impl Connection {
             handshake_response: None,
             query_response: ResponseAccumulator::default(),
             diff: state_difference_map,
+            replay: replay_map,
             kafka_producer_config: kafka_config,
         }
     }
@@ -57,6 +63,7 @@ impl Connection {
             SwitchableConnection::None,
             SwitchableConnection::None,
             StateDiffLog::default(),
+            ReplayLog::default(),
             None,
         )
     }
@@ -127,4 +134,10 @@ impl SwitchableConnection {
             _ => panic!("SwitchableConnection::take() called on a non-PlainConnection"),
         }
     }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ReplayLogEntry {
+    pub last_command: String,
+    pub output: String,
 }

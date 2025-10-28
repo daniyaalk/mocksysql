@@ -1,7 +1,9 @@
-use crate::connection::KafkaProducerConfig;
-use crate::materialization::StateDiffLog;
+use crate::connection::{KafkaProducerConfig, ReplayLogEntry};
+use crate::materialization::{ReplayLog, StateDiffLog};
+use dashmap::DashMap;
+use kafka::consumer::Consumer;
 use kafka::producer::{Producer, RequiredAcks};
-use log::error;
+use log::{debug, error};
 use std::env;
 use std::fs::{File, OpenOptions};
 use std::net::TcpListener;
@@ -25,10 +27,12 @@ fn main() {
     let listener = TcpListener::bind(bind_address);
 
     let state_difference_map = StateDiffLog::default();
+    let mut replay_map = ReplayLog::default();
 
     env_logger::init();
 
     let mut kafka_producer: KafkaProducerConfig = None;
+
     if let Ok(value) = env::var("kafka_replay_log_enable") {
         if value == "true" {
             let kafka_host = env::var("KAFKA_HOST").expect("KAFKA_HOST is not set");
@@ -42,6 +46,21 @@ fn main() {
                     .unwrap();
 
             kafka_producer = Some((kafka_topic, Arc::new(Mutex::new(producer))));
+        }
+    } else if let Ok(value) = env::var("kafka_replay_response_enable") {
+        if value == "true" {
+            let kafka_host = env::var("KAFKA_HOST").expect("KAFKA_HOST is not set");
+            let kafka_topic = env::var("KAFKA_TOPIC").expect("KAFKA_TOPIC is not set");
+
+            let consumer =
+                Consumer::from_hosts(kafka_host.split(",").map(|s| s.to_string()).collect())
+                    .with_topic(kafka_topic.clone())
+                    .create()
+                    .unwrap();
+
+            let map = Arc::new(Mutex::new(DashMap::new()));
+            replay_map = Some(map.clone());
+            spawn_kafka_read(consumer, map);
         }
     }
 
@@ -68,4 +87,23 @@ fn main() {
             }
         }
     }
+}
+
+fn spawn_kafka_read(mut consumer: Consumer, replay_map: Arc<Mutex<DashMap<String, String>>>) {
+    std::thread::spawn(move || loop {
+        for ms in consumer.poll().unwrap().iter() {
+            for m in ms.messages() {
+
+                let message_string = String::from_utf8(m.value.to_vec()).unwrap();
+
+                match serde_json::from_str::<ReplayLogEntry>(&*message_string) {
+                    Ok(entry) => {let map = replay_map.lock().unwrap();
+                    debug!("{:?}", entry);
+                    map.insert(entry.last_command, entry.output);}
+                    Err(e) => println!("Error deserializing replay log entry, {}", e),
+                }
+
+            }
+        }
+    });
 }
