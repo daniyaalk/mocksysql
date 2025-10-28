@@ -74,12 +74,14 @@ fn main() {
 
                     Ok(client_stream) => {
                         let kafka_producer = kafka_producer.clone();
+                        let replay_map = replay_map.clone();
                         let state_difference_map = Arc::clone(&state_difference_map);
                         std::thread::spawn(move || {
                             connection_handler::initiate(
                                 client_stream,
                                 state_difference_map,
                                 kafka_producer,
+                                replay_map,
                             )
                         });
                     }
@@ -93,16 +95,16 @@ fn spawn_kafka_read(mut consumer: Consumer, replay_map: Arc<Mutex<DashMap<String
     std::thread::spawn(move || loop {
         for ms in consumer.poll().unwrap().iter() {
             for m in ms.messages() {
-
                 let message_string = String::from_utf8(m.value.to_vec()).unwrap();
 
                 match serde_json::from_str::<ReplayLogEntry>(&*message_string) {
-                    Ok(entry) => {let map = replay_map.lock().unwrap();
-                    debug!("{:?}", entry);
-                    map.insert(entry.last_command, entry.output);}
+                    Ok(entry) => {
+                        let map = replay_map.lock().unwrap();
+                        debug!("{:?}", entry);
+                        map.insert(entry.last_command, entry.output);
+                    }
                     Err(e) => println!("Error deserializing replay log entry, {}", e),
                 }
-
             }
         }
     });

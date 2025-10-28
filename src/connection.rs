@@ -7,11 +7,11 @@ use kafka::consumer::Consumer;
 use kafka::producer::Producer;
 #[cfg(feature = "tls")]
 use rustls::{ClientConnection, ServerConnection, StreamOwned};
+use serde::Deserialize;
 use std::cell::RefCell;
 use std::fs::File;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
-use serde::Deserialize;
 
 pub type KafkaProducerConfig = Option<(String, Arc<Mutex<Producer>>)>;
 pub type KafkaConsumerConfig = Option<(String, Arc<Mutex<Consumer>>)>;
