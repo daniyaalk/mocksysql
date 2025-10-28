@@ -3,18 +3,15 @@ use crate::mysql::accumulator::handshake::HandshakeAccumulator;
 use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
 use crate::mysql::accumulator::result_set::ResponseAccumulator;
 use crate::mysql::command::Command;
-use kafka::consumer::Consumer;
 use kafka::producer::Producer;
 #[cfg(feature = "tls")]
 use rustls::{ClientConnection, ServerConnection, StreamOwned};
 use serde::Deserialize;
 use std::cell::RefCell;
-use std::fs::File;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 
 pub type KafkaProducerConfig = Option<(String, Arc<Mutex<Producer>>)>;
-pub type KafkaConsumerConfig = Option<(String, Arc<Mutex<Consumer>>)>;
 
 #[allow(dead_code)]
 pub struct Connection {

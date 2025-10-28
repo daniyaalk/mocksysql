@@ -1,24 +1,22 @@
 use crate::connection::{KafkaProducerConfig, Phase, SwitchableConnection};
 use crate::materialization::{ReplayLog, StateDiffLog};
+use crate::mysql::command::Command;
 use crate::mysql::command::MySqlCommand::ComQuery;
-use crate::mysql::command::{Command, MySqlCommand};
 use crate::mysql::packet::{OkData, Packet, PacketType};
 #[cfg(feature = "tls")]
 use crate::tls::{handle_client_tls, handle_server_tls};
 use crate::{connection::Connection, materialization, state_handler};
 use base64::Engine;
-use kafka::producer::{AsBytes, Record};
+use kafka::producer::Record;
 use log::{debug, error};
 use once_cell::sync::Lazy;
 #[cfg(feature = "tls")]
 use rustls::StreamOwned;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::env::VarError;
-use std::fs::File;
 use std::str::FromStr;
 use std::sync::atomic::AtomicU8;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::LazyLock;
 use std::thread::sleep;
 use std::time::Duration;
 use std::{
@@ -82,36 +80,10 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
         loop {
             debug!("Listening from server");
 
-            let mut bytes_count: Option<usize> = None;
+            let mut bytes_count: Option<usize> =
+                get_response_from_cache_if_replay_enabled(&mut connection, buf);
 
-            if let Some(replay_logs) = &connection.replay {
-                let last_command = connection.get_last_command();
-                if last_command.is_some() && last_command.unwrap().com_code == ComQuery {
-                    loop {
-                        {
-                            let replay_logs = replay_logs.lock().unwrap();
-                            let entry =
-                                replay_logs.get(&connection.get_last_command().unwrap().arg);
-
-                            if let Some(entry) = entry {
-                                let base64_bytes = entry.value();
-                                if let Ok(bytes) =
-                                    base64::engine::general_purpose::STANDARD.decode(base64_bytes)
-                                {
-                                    let len = bytes.len().min(buf.len());
-                                    buf[..len].copy_from_slice(&bytes[..len]);
-                                    bytes_count = Some(len);
-                                    break;
-                                }
-                            }
-                        }
-                        sleep(Duration::from_millis(100));
-                        debug!("Timed out waiting for cache population");
-                    }
-                }
-            }
-
-            if None == bytes_count {
+            if bytes_count.is_none() {
                 bytes_count = Some(read_bytes(&mut connection.server_connection, &mut buf)?);
             }
 
@@ -129,19 +101,7 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
 
             write_bytes(&mut connection.client_connection, encoded_bytes.as_slice());
 
-            if let Some(command) = &connection.last_command {
-                if let Some((topic, producer)) = &connection.kafka_producer_config {
-                    let payload = format!(
-                        "{{\"last_command\": \"{}\", \"output\": \"{}\"}}\n",
-                        escape_json(&command.arg),
-                        base64::engine::general_purpose::STANDARD.encode(&encoded_bytes),
-                    );
-
-                    let mut handle = producer.lock().unwrap();
-                    let res = handle.send(&Record::from_value(&topic, payload.as_bytes().to_vec()));
-                    debug!("Kafka response: {:?}", res);
-                }
-            }
+            push_to_kafka_if_logging_enabled(&mut connection, &encoded_bytes);
 
             if SERVER_TRANSITION_PHASES.contains(&connection.phase) {
                 debug!("Transitioning to client");
@@ -157,9 +117,6 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
             }
 
             debug!("Listening from client: {:?}", &connection.phase);
-
-            let response_bytes: Option<&[u8]> = None;
-            if let Some(replay) = &connection.replay {}
 
             let read_bytes = read_bytes(&mut connection.client_connection, &mut buf)?;
 
@@ -182,6 +139,8 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
                 continue;
             }
 
+            // Don't send data to the server if replay is enabled and the client
+            // has performed a query.
             if connection.replay.is_none()
                 || connection.get_last_command().is_none()
                 || connection.get_last_command().unwrap().com_code != ComQuery
@@ -197,10 +156,56 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
     }
 }
 
-fn delay_if_required(last_command: &Option<Command>, delay_vars: &HashMap<String, String>) {
-    let last_command = last_command.clone();
-    if last_command.is_some() {
-        if let Some(command_type) = last_command.unwrap().arg.split_whitespace().next() {
+fn push_to_kafka_if_logging_enabled(connection: &mut Connection, encoded_bytes: &Vec<u8>) {
+    if let Some(command) = &connection.last_command {
+        if let Some((topic, producer)) = &connection.kafka_producer_config {
+            let payload = format!(
+                "{{\"last_command\": \"{}\", \"output\": \"{}\"}}\n",
+                escape_json(&command.arg),
+                base64::engine::general_purpose::STANDARD.encode(encoded_bytes),
+            );
+
+            let mut handle = producer.lock().unwrap();
+            let res = handle.send(&Record::from_value(topic, payload.as_bytes().to_vec()));
+            debug!("Kafka response: {:?}", res);
+        }
+    }
+}
+
+fn get_response_from_cache_if_replay_enabled(
+    connection: &mut Connection,
+    mut buf: [u8; 4096],
+) -> Option<usize> {
+    if let Some(replay_logs) = &connection.replay {
+        let last_command = connection.get_last_command();
+        if last_command.is_some() && last_command.unwrap().com_code == ComQuery {
+            loop {
+                {
+                    let replay_logs = replay_logs.lock().unwrap();
+                    let entry = replay_logs.get(&connection.get_last_command().unwrap().arg);
+
+                    if let Some(entry) = entry {
+                        let base64_bytes = entry.value();
+                        if let Ok(bytes) =
+                            base64::engine::general_purpose::STANDARD.decode(base64_bytes)
+                        {
+                            let len = bytes.len().min(buf.len());
+                            buf[..len].copy_from_slice(&bytes[..len]);
+                            return Some(len);
+                        }
+                    }
+                }
+                sleep(Duration::from_millis(100));
+                debug!("Timed out waiting for cache population");
+            }
+        }
+    }
+    None
+}
+
+fn delay_if_required(last_command_option: &Option<Command>, delay_vars: &HashMap<String, String>) {
+    if let Some(last_command) = last_command_option {
+        if let Some(command_type) = last_command.arg.split_whitespace().next() {
             let key = "DELAY_".to_string() + &*command_type.to_uppercase();
             if delay_vars.contains_key(&key) {
                 match env::var(&key) {
@@ -209,7 +214,7 @@ fn delay_if_required(last_command: &Option<Command>, delay_vars: &HashMap<String
 
                         match delay {
                             Ok(delay) => {
-                                thread::sleep(Duration::from_millis(delay));
+                                sleep(Duration::from_millis(delay));
                                 debug!("Delaying for {}", delay);
                             }
                             Err(_) => {
@@ -302,7 +307,7 @@ fn is_write_query(
     let last_command_arg = &last_command.arg.to_lowercase();
 
     let ret = packet.p_type.eq(&PacketType::Command)
-        && last_command.com_code.eq(&MySqlCommand::ComQuery)
+        && last_command.com_code.eq(&ComQuery)
         && (last_command_arg.starts_with("insert")
             || last_command_arg.starts_with("update")
             || last_command_arg.starts_with("delete"));

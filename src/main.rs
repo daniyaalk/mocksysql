@@ -3,9 +3,8 @@ use crate::materialization::{ReplayLog, StateDiffLog};
 use dashmap::DashMap;
 use kafka::consumer::Consumer;
 use kafka::producer::{Producer, RequiredAcks};
-use log::{debug, error};
+use log::debug;
 use std::env;
-use std::fs::{File, OpenOptions};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -27,42 +26,12 @@ fn main() {
     let listener = TcpListener::bind(bind_address);
 
     let state_difference_map = StateDiffLog::default();
-    let mut replay_map = ReplayLog::default();
 
     env_logger::init();
 
-    let mut kafka_producer: KafkaProducerConfig = None;
+    let kafka_producer: KafkaProducerConfig = prepare_kafka_producer_config();
 
-    if let Ok(value) = env::var("kafka_replay_log_enable") {
-        if value == "true" {
-            let kafka_host = env::var("KAFKA_HOST").expect("KAFKA_HOST is not set");
-            let kafka_topic = env::var("KAFKA_TOPIC").expect("KAFKA_TOPIC is not set");
-
-            let producer =
-                Producer::from_hosts(kafka_host.split(",").map(|s| s.to_string()).collect())
-                    .with_ack_timeout(Duration::from_secs(1))
-                    .with_required_acks(RequiredAcks::One)
-                    .create()
-                    .unwrap();
-
-            kafka_producer = Some((kafka_topic, Arc::new(Mutex::new(producer))));
-        }
-    } else if let Ok(value) = env::var("kafka_replay_response_enable") {
-        if value == "true" {
-            let kafka_host = env::var("KAFKA_HOST").expect("KAFKA_HOST is not set");
-            let kafka_topic = env::var("KAFKA_TOPIC").expect("KAFKA_TOPIC is not set");
-
-            let consumer =
-                Consumer::from_hosts(kafka_host.split(",").map(|s| s.to_string()).collect())
-                    .with_topic(kafka_topic.clone())
-                    .create()
-                    .unwrap();
-
-            let map = Arc::new(Mutex::new(DashMap::new()));
-            replay_map = Some(map.clone());
-            spawn_kafka_read(consumer, map);
-        }
-    }
+    let replay_map = prepare_and_run_kafka_consumer();
 
     match listener {
         Err(_) => println!("Error when binding to socket!"),
@@ -89,6 +58,45 @@ fn main() {
             }
         }
     }
+}
+
+fn prepare_and_run_kafka_consumer() -> ReplayLog {
+    if let Ok(value) = env::var("kafka_replay_response_enable") {
+        if value == "true" {
+            let kafka_host = env::var("KAFKA_HOST").expect("KAFKA_HOST is not set");
+            let kafka_topic = env::var("KAFKA_TOPIC").expect("KAFKA_TOPIC is not set");
+
+            let consumer =
+                Consumer::from_hosts(kafka_host.split(",").map(|s| s.to_string()).collect())
+                    .with_topic(kafka_topic.clone())
+                    .create()
+                    .unwrap();
+
+            let map = Arc::new(Mutex::new(DashMap::new()));
+            spawn_kafka_read(consumer, map.clone());
+            return Some(map.clone());
+        }
+    }
+    None
+}
+
+fn prepare_kafka_producer_config() -> KafkaProducerConfig {
+    if let Ok(value) = env::var("kafka_replay_log_enable") {
+        if value == "true" {
+            let kafka_host = env::var("KAFKA_HOST").expect("KAFKA_HOST is not set");
+            let kafka_topic = env::var("KAFKA_TOPIC").expect("KAFKA_TOPIC is not set");
+
+            let producer =
+                Producer::from_hosts(kafka_host.split(",").map(|s| s.to_string()).collect())
+                    .with_ack_timeout(Duration::from_secs(1))
+                    .with_required_acks(RequiredAcks::One)
+                    .create()
+                    .unwrap();
+
+            return Some((kafka_topic, Arc::new(Mutex::new(producer))));
+        }
+    }
+    None
 }
 
 fn spawn_kafka_read(mut consumer: Consumer, replay_map: Arc<Mutex<DashMap<String, String>>>) {
