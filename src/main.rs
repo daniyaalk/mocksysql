@@ -1,3 +1,4 @@
+use crate::connection::KafkaProducerConfig;
 use crate::materialization::StateDiffLog;
 use kafka::producer::{Producer, RequiredAcks};
 use log::error;
@@ -6,7 +7,6 @@ use std::fs::{File, OpenOptions};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use crate::connection::KafkaProducerConfig;
 
 mod connection;
 mod connection_handler;
@@ -34,7 +34,7 @@ fn main() {
             let kafka_host = env::var("KAFKA_HOST").expect("KAFKA_HOST is not set");
             let kafka_topic = env::var("KAFKA_TOPIC").expect("KAFKA_TOPIC is not set");
 
-            let producer=
+            let producer =
                 Producer::from_hosts(kafka_host.split(",").map(|s| s.to_string()).collect())
                     .with_ack_timeout(Duration::from_secs(1))
                     .with_required_acks(RequiredAcks::One)
@@ -54,7 +54,6 @@ fn main() {
                     Err(_) => println!("Error establishing connection!"),
 
                     Ok(client_stream) => {
-
                         let kafka_producer = kafka_producer.clone();
                         let state_difference_map = Arc::clone(&state_difference_map);
                         std::thread::spawn(move || {

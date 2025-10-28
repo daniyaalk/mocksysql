@@ -143,7 +143,6 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
                 }
             }
 
-
             write_bytes(&mut connection.server_connection, encoded_bytes.as_slice());
 
             if CLIENT_TRANSITION_PHASES.contains(&connection.phase) {
