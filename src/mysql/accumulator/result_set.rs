@@ -63,7 +63,7 @@ impl Accumulator for ResponseAccumulator {
                 }
 
                 if last_command.com_code == MySqlCommand::ComStmtExecute {
-                    next_phase = self.process_binary_result_set(packet, connection, current_phase);
+                    next_phase = self.process_binary_result_set(packet, current_phase);
                 } else {
                     next_phase = self.process_result_set(packet, connection, current_phase);
                 }
@@ -133,10 +133,12 @@ impl ResponseAccumulator {
             let column_name = &self.columns.get(i).unwrap().org_name;
             let mut value = row.get(column_name).unwrap();
 
-            if override_state.is_some() && override_state.unwrap().contains_key(column_name) {
-                value = override_state.unwrap().get(column_name).unwrap();
-                // Updating original hashmap to decide if row needs to be omitted in select queries based on new state.
-                row.insert(column_name.clone(), value.clone());
+            if let Some(override_state) = override_state {
+                if let Some(new_value) = override_state.get(column_name) {
+                    value = new_value;
+                    // Updating original hashmap to decide if row needs to be omitted in select queries based on new state.
+                    row.insert(column_name.clone(), value.clone());
+                }
             }
 
             new_body.extend(match value {
@@ -174,7 +176,7 @@ impl ResponseAccumulator {
     fn process_binary_result_set(
         &self,
         packet: &mut Packet,
-        connection: &Connection,
+        // connection: &Connection,
         current_phase: Phase,
     ) -> Phase {
         if packet.p_type == PacketType::Eof
