@@ -1,4 +1,4 @@
-use crate::connection::{KafkaProducerConfig, Phase, SwitchableConnection};
+use crate::connection::{KafkaProducerConfig, Phase, ReplayLogEntry, SwitchableConnection};
 use crate::materialization::{ReplayLog, StateDiffLog};
 use crate::mysql::command::Command;
 use crate::mysql::command::MySqlCommand::ComQuery;
@@ -159,15 +159,15 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
 fn push_to_kafka_if_logging_enabled(connection: &mut Connection, encoded_bytes: &Vec<u8>) {
     if let Some(command) = &connection.last_command {
         if let Some((topic, producer)) = &connection.kafka_producer_config {
-            let payload = format!(
-                "{{\"last_command\": \"{}\", \"output\": \"{}\"}}\n",
-                escape_json(&command.arg),
-                base64::engine::general_purpose::STANDARD.encode(encoded_bytes),
-            );
+            let payload = serde_json::to_string(&ReplayLogEntry {
+                last_command: command.arg.clone(),
+                output: base64::engine::general_purpose::STANDARD.encode(encoded_bytes),
+            });
 
-            let mut handle = producer.lock().unwrap();
-            let res = handle.send(&Record::from_value(topic, payload.as_bytes().to_vec()));
-            debug!("Kafka response: {:?}", res);
+            if let Ok(payload) = payload {
+                let mut handle = producer.lock().unwrap();
+                let _ = handle.send(&Record::from_value(topic, payload.as_bytes().to_vec()));
+            }
         }
     }
 }

@@ -6,7 +6,7 @@ use crate::mysql::command::Command;
 use kafka::producer::Producer;
 #[cfg(feature = "tls")]
 use rustls::{ClientConnection, ServerConnection, StreamOwned};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
@@ -133,7 +133,7 @@ impl SwitchableConnection {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ReplayLogEntry {
     pub last_command: String,
     pub output: String,
