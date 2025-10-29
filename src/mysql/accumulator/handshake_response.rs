@@ -150,7 +150,7 @@ impl Accumulator for HandshakeResponseAccumulator {
         if client_flag & CapabilityFlags::ClientZSTDCompressionAlgorithm as u32 != 0 {
             zstd_compression_level = {
                 let result = IntLenEnc::from_bytes(&packet.body[offset..].to_vec(), Some(1));
-                offset += result.offset_increment;
+                // offset += result.offset_increment;
                 result.result as u8
             }
         } else {

@@ -3,15 +3,15 @@ use crate::connection::{KafkaProducerConfig, ReplayLogEntry};
 #[cfg(feature = "replay")]
 use crate::materialization::ReplayLog;
 use crate::materialization::StateDiffLog;
-use crate::util::cache::get_cache_ttl;
 #[cfg(feature = "replay")]
-use dashmap::DashMap;
+use crate::util::cache::get_cache_ttl;
 #[cfg(feature = "replay")]
 use kafka::consumer::Consumer;
 #[cfg(feature = "replay")]
 use kafka::producer::{Producer, RequiredAcks};
 #[cfg(feature = "replay")]
 use log::debug;
+#[cfg(feature = "replay")]
 use log::error;
 use std::env;
 use std::net::TcpListener;
@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 #[cfg(feature = "replay")]
 use std::time::Duration;
+#[cfg(feature = "replay")]
 use ttl_cache::TtlCache;
 
 mod connection;

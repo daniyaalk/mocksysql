@@ -6,6 +6,8 @@ following:
 * Log queries and intercept responses from the MySQL server.
 * Return dummy responses for DML queries (INSERT, UPDATE, DELETE)
 * Query interception for delta storage (Read data from primary database, persist data to secondary database).
+ 
+**DISCLAIMER: DO NOT use mocksysql in production, especially if you are using non-read-only users.**
 
 ## Good to haves
 

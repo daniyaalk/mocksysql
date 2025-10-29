@@ -9,7 +9,6 @@ use crate::mysql::packet::{
 use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringLenEnc};
 use log::debug;
 use sqlparser::ast::Statement;
-use sqlparser::dialect::MySqlDialect;
 use std::collections::HashMap;
 
 #[derive(Debug, Default, Clone)]
@@ -28,7 +27,6 @@ pub struct ResponseAccumulator {
     params: Vec<ColumnDefinition>,
     accumulation_complete: bool,
     error: Option<ErrorData>,
-    parsed_sql: Option<Vec<Statement>>,
     skipped_packets: usize,
     warning_count: usize,
 }
@@ -114,7 +112,12 @@ impl ResponseAccumulator {
         row
     }
 
-    fn override_row(&mut self, packet: &mut Packet, diff: &mut StateDifference) {
+    fn override_row(
+        &mut self,
+        packet: &mut Packet,
+        diff: &mut StateDifference,
+        connection: &Connection,
+    ) {
         let mut row = self.parse_row(packet);
         let mut new_body: Vec<u8> = Vec::new();
         let mut override_state = None;
@@ -147,7 +150,7 @@ impl ResponseAccumulator {
             })
         }
 
-        if let Some(statements) = &self.parsed_sql {
+        if let Some(statements) = &connection.last_command.as_ref().unwrap().ast {
             if let Some(Statement::Query(query_box)) = statements.last() {
                 let query = query_box.body.as_select();
 
@@ -294,12 +297,6 @@ impl ResponseAccumulator {
                     self.state = State::Complete;
                 }
 
-                self.parsed_sql = sqlparser::parser::Parser::parse_sql(
-                    &MySqlDialect {},
-                    &connection.get_last_command().unwrap().arg,
-                )
-                .ok();
-
                 next_phase = self.consume(packet, connection)
             }
             State::MetaExchange => {
@@ -360,7 +357,7 @@ impl ResponseAccumulator {
                             .diff
                             .get_mut(&self.columns.first().unwrap().org_table)
                         {
-                            self.override_row(packet, diff);
+                            self.override_row(packet, diff, connection);
                         }
                     }
                     _ => {

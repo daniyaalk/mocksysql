@@ -11,7 +11,6 @@ use crate::mysql::command::MySqlCommand::ComQuery;
 use crate::mysql::packet::{OkData, Packet, PacketType};
 #[cfg(feature = "tls")]
 use crate::tls::{handle_client_tls, handle_server_tls};
-use crate::util::cache::get_cache_ttl;
 use crate::{connection::Connection, materialization, state_handler};
 #[cfg(feature = "replay")]
 use base64::Engine;
@@ -89,6 +88,7 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
     loop {
         // Server Loop
 
+        #[cfg(feature = "replay")]
         let mut kafka_log_buffer: Vec<u8> = Vec::with_capacity(4096);
 
         loop {
@@ -162,10 +162,7 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
             // Don't send data to the server if replay is enabled and the client
             #[cfg(feature = "replay")]
             // has performed a query.
-            if connection.replay.is_none()
-                || connection.get_last_command().is_none()
-                || connection.get_last_command().unwrap().com_code != ComQuery
-            {
+            if send_command_to_server(&connection) {
                 write_bytes(&mut connection.server_connection, encoded_bytes.as_slice());
             }
             #[cfg(not(feature = "replay"))]
@@ -180,6 +177,45 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
 }
 
 #[cfg(feature = "replay")]
+fn send_command_to_server(connection: &Connection) -> bool {
+    let last_command = connection.get_last_command();
+    if connection.replay.is_none()
+        || last_command.is_none()
+        || last_command.unwrap().com_code != ComQuery
+    {
+        return true;
+    }
+
+    if let Some(last_command) = last_command {
+        if last_command.com_code != ComQuery {
+            return true;
+        }
+
+        let ast = match &last_command.ast {
+            Some(ast) => ast,
+            None => return false,
+        };
+
+        for statement in ast {
+            if let sqlparser::ast::Statement::Query(query) = statement {
+                if let sqlparser::ast::SetExpr::Select(select) = query.body.as_ref() {
+                    if !select.from.is_empty() {
+                        // If select query, passthrough to server if the query has no table in the 'from' directive.
+                        // This is to facilitate queries that are executed during startup like `select @@version_comment limit 1`
+                        return false;
+                    }
+                } else {
+                    // Don't send the query to the MySQL server if any command other than select is executed.
+                    return false;
+                }
+            }
+        }
+    }
+
+    true
+}
+
+#[cfg(feature = "replay")]
 fn push_to_kafka_if_logging_enabled(
     connection: &Connection,
     encoded_bytes: &Vec<u8>,
@@ -187,7 +223,7 @@ fn push_to_kafka_if_logging_enabled(
 ) {
     if let Some(command) = &connection.last_command {
         if let Some((topic, producer)) = &connection.kafka_producer_config {
-            if let Some(partial_bytes) = &connection.partial_bytes {
+            if let Some(_) = &connection.partial_bytes {
                 kafka_log_buffer.extend_from_slice(encoded_bytes);
             } else {
                 let mut combined = Vec::with_capacity(kafka_log_buffer.len() + encoded_bytes.len());
@@ -214,12 +250,11 @@ fn get_response_from_cache_if_replay_enabled(
     connection: &mut Connection,
     buf: &mut [u8],
 ) -> Option<usize> {
-    if let Some(replay_logs) = &connection.replay {
-        let last_command = connection.get_last_command();
-        if last_command.is_some() && last_command.unwrap().com_code == ComQuery {
+    if !send_command_to_server(&connection) {
+        if let Some(replay_logs) = &connection.replay {
             loop {
                 {
-                    let mut replay_logs = replay_logs.lock().unwrap();
+                    let replay_logs = replay_logs.lock().unwrap();
                     let last_command = &connection.get_last_command().unwrap().arg;
                     let entry = replay_logs.get(last_command);
 
@@ -360,7 +395,7 @@ fn is_write_query(
             || last_command_arg.starts_with("update")
             || last_command_arg.starts_with("delete"));
 
-    materialization::get_diff(diff, &last_command.arg);
+    materialization::get_diff(diff, &last_command.ast);
 
     ret
 }

@@ -4,14 +4,11 @@ use crate::util::cache::get_cache_ttl;
 use dashmap::DashMap;
 use log::{debug, error};
 use sqlparser::ast::{Assignment, AssignmentTarget, Expr, Statement, TableFactor};
-use sqlparser::dialect::MySqlDialect;
-use sqlparser::parser::Parser;
 use std::collections::HashMap;
 use std::env;
 #[cfg(feature = "replay")]
 use std::sync::Mutex;
-use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::sync::Arc;
 use ttl_cache::TtlCache;
 use uuid::Uuid;
 
@@ -32,16 +29,12 @@ pub type StateDiffLog = Arc<DashMap<String, StateDifference>>;
 #[cfg(feature = "replay")]
 pub type ReplayLog = Option<Arc<Mutex<TtlCache<String, String>>>>;
 
-const DIALECT: MySqlDialect = MySqlDialect {};
-
-pub fn get_diff(map: &mut StateDiffLog, query: &str) {
-    let ast = Parser::parse_sql(&DIALECT, query);
-
-    if ast.is_err() {
+pub fn get_diff(map: &mut StateDiffLog, ast: &Option<Vec<Statement>>) {
+    if ast.is_none() {
         return;
     }
 
-    let statement = ast.unwrap();
+    let statement = ast.as_ref().unwrap();
 
     for statement in statement {
         if let Statement::Update {
@@ -55,11 +48,11 @@ pub fn get_diff(map: &mut StateDiffLog, query: &str) {
                 name,
                 alias: _alias,
                 ..
-            } = table.relation
+            } = &table.relation
             {
                 let table_name = name.0.last().unwrap().clone().to_string();
 
-                let processed_assignments = process_assignments(assignments);
+                let processed_assignments = process_assignments(&assignments);
 
                 if processed_assignments.is_err() {
                     panic_on_unsupported_behaviour(processed_assignments.err().unwrap());
@@ -78,7 +71,7 @@ pub fn get_diff(map: &mut StateDiffLog, query: &str) {
 
 fn update_diff_log(
     map: &mut StateDiffLog,
-    selection: Option<Expr>,
+    selection: &Option<Expr>,
     table_name: &String,
     processed_assignments: Result<HashMap<String, Option<String>>, &str>,
 ) {
@@ -92,19 +85,19 @@ fn update_diff_log(
 
     state_difference.insert(
         Uuid::new_v4().to_string(),
-        (selection, processed_assignments.unwrap()),
+        (selection.clone(), processed_assignments.unwrap()),
         get_cache_ttl(),
     );
 }
 
 fn process_assignments(
-    assignments: Vec<Assignment>,
+    assignments: &Vec<Assignment>,
 ) -> Result<HashMap<String, Option<String>>, &'static str> {
     let mut processed_assignments = HashMap::default();
 
     for assignment in assignments {
-        if let Expr::Value(value) = assignment.value {
-            let assignment_target = match assignment.target {
+        if let Expr::Value(value) = assignment.value.clone() {
+            let assignment_target = match assignment.target.clone() {
                 AssignmentTarget::Tuple(_) => {
                     panic_on_unsupported_behaviour("Tuple assignment targets are not supported!");
                     return Err("Tuple assignment targets are not supported!");
