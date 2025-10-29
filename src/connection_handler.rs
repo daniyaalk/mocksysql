@@ -1,8 +1,8 @@
-use crate::connection::{Phase, SwitchableConnection};
-#[cfg(feature = "replay")]
-use crate::connection::ReplayLogEntry;
 #[cfg(feature = "replay")]
 use crate::connection::KafkaProducerConfig;
+#[cfg(feature = "replay")]
+use crate::connection::ReplayLogEntry;
+use crate::connection::{Phase, SwitchableConnection};
 #[cfg(feature = "replay")]
 use crate::materialization::ReplayLog;
 use crate::materialization::StateDiffLog;
@@ -92,7 +92,7 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
 
             #[cfg(feature = "replay")]
             let mut bytes_count: Option<usize> =
-                get_response_from_cache_if_replay_enabled(&mut connection, buf);
+                get_response_from_cache_if_replay_enabled(&mut connection, &mut buf);
 
             #[cfg(feature = "replay")]
             if bytes_count.is_none() {
@@ -195,7 +195,7 @@ fn push_to_kafka_if_logging_enabled(connection: &mut Connection, encoded_bytes: 
 #[cfg(feature = "replay")]
 fn get_response_from_cache_if_replay_enabled(
     connection: &mut Connection,
-    mut buf: [u8; 4096],
+    buf: &mut [u8],
 ) -> Option<usize> {
     if let Some(replay_logs) = &connection.replay {
         let last_command = connection.get_last_command();
@@ -206,10 +206,7 @@ fn get_response_from_cache_if_replay_enabled(
                     let entry = replay_logs.get(&connection.get_last_command().unwrap().arg);
 
                     if let Some(entry) = entry {
-                        let base64_bytes = entry.value();
-                        if let Ok(bytes) =
-                            base64::engine::general_purpose::STANDARD.decode(base64_bytes)
-                        {
+                        if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(entry) {
                             let len = bytes.len().min(buf.len());
                             buf[..len].copy_from_slice(&bytes[..len]);
                             return Some(len);

@@ -2,7 +2,8 @@
 use crate::connection::{KafkaProducerConfig, ReplayLogEntry};
 #[cfg(feature = "replay")]
 use crate::materialization::ReplayLog;
-use crate::materialization:: StateDiffLog;
+use crate::materialization::StateDiffLog;
+use crate::util::cache::get_cache_ttl;
 #[cfg(feature = "replay")]
 use dashmap::DashMap;
 #[cfg(feature = "replay")]
@@ -13,11 +14,12 @@ use kafka::producer::{Producer, RequiredAcks};
 use log::debug;
 use std::env;
 use std::net::TcpListener;
-use std::sync::{Arc};
+use std::sync::Arc;
 #[cfg(feature = "replay")]
 use std::sync::Mutex;
 #[cfg(feature = "replay")]
 use std::time::Duration;
+use ttl_cache::TtlCache;
 
 mod connection;
 mod connection_handler;
@@ -88,8 +90,7 @@ fn prepare_and_run_kafka_consumer() -> ReplayLog {
                     .with_topic(kafka_topic.clone())
                     .create()
                     .unwrap();
-
-            let map = Arc::new(Mutex::new(DashMap::new()));
+            let map = Arc::new(Mutex::new(TtlCache::new(usize::MAX)));
             #[cfg(feature = "replay")]
             spawn_kafka_read(consumer, map.clone());
             return Some(map.clone());
@@ -119,7 +120,7 @@ fn prepare_kafka_producer_config() -> KafkaProducerConfig {
 }
 
 #[cfg(feature = "replay")]
-fn spawn_kafka_read(mut consumer: Consumer, replay_map: Arc<Mutex<DashMap<String, String>>>) {
+fn spawn_kafka_read(mut consumer: Consumer, replay_map: Arc<Mutex<TtlCache<String, String>>>) {
     std::thread::spawn(move || loop {
         for ms in consumer.poll().unwrap().iter() {
             for m in ms.messages() {
@@ -127,9 +128,9 @@ fn spawn_kafka_read(mut consumer: Consumer, replay_map: Arc<Mutex<DashMap<String
 
                 match serde_json::from_str::<ReplayLogEntry>(&*message_string) {
                     Ok(entry) => {
-                        let map = replay_map.lock().unwrap();
+                        let mut map = replay_map.lock().unwrap();
                         debug!("{:?}", entry);
-                        map.insert(entry.last_command, entry.output);
+                        map.insert(entry.last_command, entry.output, get_cache_ttl());
                     }
                     Err(e) => println!("Error deserializing replay log entry, {}", e),
                 }
