@@ -89,6 +89,7 @@ fn prepare_and_run_kafka_consumer() -> ReplayLog {
             let consumer =
                 Consumer::from_hosts(kafka_host.split(",").map(|s| s.to_string()).collect())
                     .with_topic(kafka_topic.clone())
+                    .with_fetch_max_bytes_per_partition(16 * 1024 * 1024) // 16MB
                     .create()
                     .unwrap();
             let map = Arc::new(Mutex::new(TtlCache::new(usize::MAX)));
