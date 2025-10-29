@@ -201,7 +201,7 @@ mod tests {
     #[test]
     fn test_handshake_response() {
         let connection = Connection::default();
-        let mut packet = Packet::from_bytes(
+        let packet = Packet::from_bytes(
             &[
                 0xe2, 0x00, 0x00, 0x01, 0x8d, 0xa6, 0xff, 0x19, 0x00, 0x00, 0x00, 0x01, 0xff, 0x00,
                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -232,7 +232,7 @@ mod tests {
     #[test]
     fn test_handshake_response_2() {
         let connection = Connection::default();
-        let mut packet = Packet::from_bytes(
+        let packet = Packet::from_bytes(
             &[
                 0xe1, 0x00, 0x00, 0x01, 0x8d, 0xa6, 0xff, 0x19, 0x00, 0x00, 0x00, 0x01, 0xff, 0x00,
                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -264,7 +264,7 @@ mod tests {
     #[test]
     fn test_handshake_response_3() {
         let connection = Connection::default();
-        let mut packet = Packet::from_bytes(
+        let packet = Packet::from_bytes(
             &[
                 10, 1, 0, 1, 143, 162, 58, 1, 255, 255, 255, 0, 33, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 115, 116, 97, 103, 103, 105, 110, 103, 95,

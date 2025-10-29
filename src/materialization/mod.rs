@@ -7,7 +7,9 @@ use sqlparser::dialect::MySqlDialect;
 use sqlparser::parser::Parser;
 use std::collections::HashMap;
 use std::env;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
+#[cfg(feature = "replay")]
+use std::sync::Mutex;
 use std::time::Duration;
 use ttl_cache::TtlCache;
 use uuid::Uuid;
@@ -27,6 +29,8 @@ Divergence stored in the following format:
 DashMap<K, V>; where K : Table, V: StateDifference
 */
 pub type StateDiffLog = Arc<DashMap<String, StateDifference>>;
+
+#[cfg(feature = "replay")]
 pub type ReplayLog = Option<Arc<Mutex<DashMap<String, String>>>>;
 
 const DIALECT: MySqlDialect = MySqlDialect {};

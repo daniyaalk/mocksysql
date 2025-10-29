@@ -1,12 +1,20 @@
-use crate::connection::{KafkaProducerConfig, Phase, ReplayLogEntry, SwitchableConnection};
-use crate::materialization::{ReplayLog, StateDiffLog};
+use crate::connection::{Phase, SwitchableConnection};
+#[cfg(feature = "replay")]
+use crate::connection::ReplayLogEntry;
+#[cfg(feature = "replay")]
+use crate::connection::KafkaProducerConfig;
+#[cfg(feature = "replay")]
+use crate::materialization::ReplayLog;
+use crate::materialization::StateDiffLog;
 use crate::mysql::command::Command;
 use crate::mysql::command::MySqlCommand::ComQuery;
 use crate::mysql::packet::{OkData, Packet, PacketType};
 #[cfg(feature = "tls")]
 use crate::tls::{handle_client_tls, handle_server_tls};
 use crate::{connection::Connection, materialization, state_handler};
+#[cfg(feature = "replay")]
 use base64::Engine;
+#[cfg(feature = "replay")]
 use kafka::producer::Record;
 use log::{debug, error};
 use once_cell::sync::Lazy;
@@ -50,8 +58,8 @@ static CLIENT_TRANSITION_PHASES: LazyLock<HashSet<Phase>> =
 pub fn initiate(
     client: TcpStream,
     state_difference_map: StateDiffLog,
-    kafka_config: KafkaProducerConfig,
-    replay_map: ReplayLog,
+    #[cfg(feature = "replay")] kafka_config: KafkaProducerConfig,
+    #[cfg(feature = "replay")] replay_map: ReplayLog,
 ) {
     let target_address = env::var("TARGET_ADDRESS").unwrap_or_else(|_| "127.0.0.1:3307".to_owned());
 
@@ -61,7 +69,9 @@ pub fn initiate(
         SwitchableConnection::Plain(RefCell::new(server)),
         SwitchableConnection::Plain(RefCell::new(client)),
         state_difference_map,
+        #[cfg(feature = "replay")]
         replay_map,
+        #[cfg(feature = "replay")]
         kafka_config,
     );
 
@@ -80,12 +90,17 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
         loop {
             debug!("Listening from server");
 
+            #[cfg(feature = "replay")]
             let mut bytes_count: Option<usize> =
                 get_response_from_cache_if_replay_enabled(&mut connection, buf);
 
+            #[cfg(feature = "replay")]
             if bytes_count.is_none() {
                 bytes_count = Some(read_bytes(&mut connection.server_connection, &mut buf)?);
             }
+
+            #[cfg(not(feature = "replay"))]
+            let bytes_count = Some(read_bytes(&mut connection.server_connection, &mut buf)?);
 
             let bytes_count = bytes_count.unwrap_or(0);
 
@@ -101,6 +116,7 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
 
             write_bytes(&mut connection.client_connection, encoded_bytes.as_slice());
 
+            #[cfg(feature = "replay")]
             push_to_kafka_if_logging_enabled(&mut connection, &encoded_bytes);
 
             if SERVER_TRANSITION_PHASES.contains(&connection.phase) {
@@ -140,6 +156,7 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
             }
 
             // Don't send data to the server if replay is enabled and the client
+            #[cfg(feature = "replay")]
             // has performed a query.
             if connection.replay.is_none()
                 || connection.get_last_command().is_none()
@@ -147,6 +164,8 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
             {
                 write_bytes(&mut connection.server_connection, encoded_bytes.as_slice());
             }
+            #[cfg(not(feature = "replay"))]
+            write_bytes(&mut connection.server_connection, encoded_bytes.as_slice());
 
             if CLIENT_TRANSITION_PHASES.contains(&connection.phase) {
                 debug!("Transitioning to server");
@@ -156,6 +175,7 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
     }
 }
 
+#[cfg(feature = "replay")]
 fn push_to_kafka_if_logging_enabled(connection: &mut Connection, encoded_bytes: &Vec<u8>) {
     if let Some(command) = &connection.last_command {
         if let Some((topic, producer)) = &connection.kafka_producer_config {
@@ -172,6 +192,7 @@ fn push_to_kafka_if_logging_enabled(connection: &mut Connection, encoded_bytes: 
     }
 }
 
+#[cfg(feature = "replay")]
 fn get_response_from_cache_if_replay_enabled(
     connection: &mut Connection,
     mut buf: [u8; 4096],
@@ -354,13 +375,4 @@ fn intercept_command(connection: &mut Connection, packets: &[Packet]) -> bool {
     }
 
     false
-}
-
-fn escape_json(user_input: &str) -> String {
-    user_input
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
 }

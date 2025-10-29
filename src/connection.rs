@@ -1,16 +1,22 @@
-use crate::materialization::{ReplayLog, StateDiffLog};
+#[cfg(feature = "replay")]
+use crate::materialization::ReplayLog;
+use crate::materialization::StateDiffLog;
 use crate::mysql::accumulator::handshake::HandshakeAccumulator;
 use crate::mysql::accumulator::handshake_response::HandshakeResponseAccumulator;
 use crate::mysql::accumulator::result_set::ResponseAccumulator;
 use crate::mysql::command::Command;
+#[cfg(feature = "replay")]
 use kafka::producer::Producer;
 #[cfg(feature = "tls")]
 use rustls::{ClientConnection, ServerConnection, StreamOwned};
+#[cfg(feature = "replay")]
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::net::TcpStream;
+#[cfg(feature = "replay")]
 use std::sync::{Arc, Mutex};
 
+#[cfg(feature = "replay")]
 pub type KafkaProducerConfig = Option<(String, Arc<Mutex<Producer>>)>;
 
 #[allow(dead_code)]
@@ -27,7 +33,10 @@ pub struct Connection {
 
     query_response: ResponseAccumulator,
     pub diff: StateDiffLog,
+
+    #[cfg(feature = "replay")]
     pub replay: ReplayLog,
+    #[cfg(feature = "replay")]
     pub kafka_producer_config: KafkaProducerConfig,
 }
 
@@ -36,8 +45,8 @@ impl Connection {
         server: SwitchableConnection,
         client: SwitchableConnection,
         state_difference_map: StateDiffLog,
-        replay_map: ReplayLog,
-        kafka_config: KafkaProducerConfig,
+        #[cfg(feature = "replay")] replay_map: ReplayLog,
+        #[cfg(feature = "replay")] kafka_config: KafkaProducerConfig,
     ) -> Connection {
         Connection {
             client_connection: client,
@@ -49,7 +58,9 @@ impl Connection {
             handshake_response: None,
             query_response: ResponseAccumulator::default(),
             diff: state_difference_map,
+            #[cfg(feature = "replay")]
             replay: replay_map,
+            #[cfg(feature = "replay")]
             kafka_producer_config: kafka_config,
         }
     }
@@ -60,7 +71,9 @@ impl Connection {
             SwitchableConnection::None,
             SwitchableConnection::None,
             StateDiffLog::default(),
+            #[cfg(feature = "replay")]
             ReplayLog::default(),
+            #[cfg(feature = "replay")]
             None,
         )
     }
@@ -132,7 +145,7 @@ impl SwitchableConnection {
         }
     }
 }
-
+#[cfg(feature = "replay")]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ReplayLogEntry {
     pub last_command: String,

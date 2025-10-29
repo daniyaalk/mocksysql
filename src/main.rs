@@ -1,12 +1,22 @@
+#[cfg(feature = "replay")]
 use crate::connection::{KafkaProducerConfig, ReplayLogEntry};
-use crate::materialization::{ReplayLog, StateDiffLog};
+#[cfg(feature = "replay")]
+use crate::materialization::ReplayLog;
+use crate::materialization:: StateDiffLog;
+#[cfg(feature = "replay")]
 use dashmap::DashMap;
+#[cfg(feature = "replay")]
 use kafka::consumer::Consumer;
+#[cfg(feature = "replay")]
 use kafka::producer::{Producer, RequiredAcks};
+#[cfg(feature = "replay")]
 use log::debug;
 use std::env;
 use std::net::TcpListener;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
+#[cfg(feature = "replay")]
+use std::sync::Mutex;
+#[cfg(feature = "replay")]
 use std::time::Duration;
 
 mod connection;
@@ -29,8 +39,10 @@ fn main() {
 
     env_logger::init();
 
+    #[cfg(feature = "replay")]
     let kafka_producer: KafkaProducerConfig = prepare_kafka_producer_config();
 
+    #[cfg(feature = "replay")]
     let replay_map = prepare_and_run_kafka_consumer();
 
     match listener {
@@ -42,14 +54,18 @@ fn main() {
                     Err(_) => println!("Error establishing connection!"),
 
                     Ok(client_stream) => {
+                        #[cfg(feature = "replay")]
                         let kafka_producer = kafka_producer.clone();
+                        #[cfg(feature = "replay")]
                         let replay_map = replay_map.clone();
                         let state_difference_map = Arc::clone(&state_difference_map);
                         std::thread::spawn(move || {
                             connection_handler::initiate(
                                 client_stream,
                                 state_difference_map,
+                                #[cfg(feature = "replay")]
                                 kafka_producer,
+                                #[cfg(feature = "replay")]
                                 replay_map,
                             )
                         });
@@ -60,6 +76,7 @@ fn main() {
     }
 }
 
+#[cfg(feature = "replay")]
 fn prepare_and_run_kafka_consumer() -> ReplayLog {
     if let Ok(value) = env::var("kafka_replay_response_enable") {
         if value == "true" {
@@ -73,6 +90,7 @@ fn prepare_and_run_kafka_consumer() -> ReplayLog {
                     .unwrap();
 
             let map = Arc::new(Mutex::new(DashMap::new()));
+            #[cfg(feature = "replay")]
             spawn_kafka_read(consumer, map.clone());
             return Some(map.clone());
         }
@@ -80,6 +98,7 @@ fn prepare_and_run_kafka_consumer() -> ReplayLog {
     None
 }
 
+#[cfg(feature = "replay")]
 fn prepare_kafka_producer_config() -> KafkaProducerConfig {
     if let Ok(value) = env::var("kafka_replay_log_enable") {
         if value == "true" {
@@ -99,6 +118,7 @@ fn prepare_kafka_producer_config() -> KafkaProducerConfig {
     None
 }
 
+#[cfg(feature = "replay")]
 fn spawn_kafka_read(mut consumer: Consumer, replay_map: Arc<Mutex<DashMap<String, String>>>) {
     std::thread::spawn(move || loop {
         for ms in consumer.poll().unwrap().iter() {
