@@ -6,9 +6,9 @@ use log::{debug, error};
 use sqlparser::ast::{Assignment, AssignmentTarget, Expr, Statement, TableFactor};
 use std::collections::HashMap;
 use std::env;
+use std::sync::Arc;
 #[cfg(feature = "replay")]
 use std::sync::Mutex;
-use std::sync::Arc;
 use ttl_cache::TtlCache;
 use uuid::Uuid;
 
