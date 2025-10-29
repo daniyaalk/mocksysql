@@ -11,6 +11,7 @@ use crate::mysql::command::MySqlCommand::ComQuery;
 use crate::mysql::packet::{OkData, Packet, PacketType};
 #[cfg(feature = "tls")]
 use crate::tls::{handle_client_tls, handle_server_tls};
+use crate::util::cache::get_cache_ttl;
 use crate::{connection::Connection, materialization, state_handler};
 #[cfg(feature = "replay")]
 use base64::Engine;
@@ -87,6 +88,9 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
 
     loop {
         // Server Loop
+
+        let mut kafka_log_buffer: Vec<u8> = Vec::with_capacity(4096);
+
         loop {
             debug!("Listening from server");
 
@@ -117,7 +121,7 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
             write_bytes(&mut connection.client_connection, encoded_bytes.as_slice());
 
             #[cfg(feature = "replay")]
-            push_to_kafka_if_logging_enabled(&mut connection, &encoded_bytes);
+            push_to_kafka_if_logging_enabled(&connection, &encoded_bytes, &mut kafka_log_buffer);
 
             if SERVER_TRANSITION_PHASES.contains(&connection.phase) {
                 debug!("Transitioning to client");
@@ -176,17 +180,30 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
 }
 
 #[cfg(feature = "replay")]
-fn push_to_kafka_if_logging_enabled(connection: &mut Connection, encoded_bytes: &Vec<u8>) {
+fn push_to_kafka_if_logging_enabled(
+    connection: &Connection,
+    encoded_bytes: &Vec<u8>,
+    kafka_log_buffer: &mut Vec<u8>,
+) {
     if let Some(command) = &connection.last_command {
         if let Some((topic, producer)) = &connection.kafka_producer_config {
-            let payload = serde_json::to_string(&ReplayLogEntry {
-                last_command: command.arg.clone(),
-                output: base64::engine::general_purpose::STANDARD.encode(encoded_bytes),
-            });
+            if let Some(partial_bytes) = &connection.partial_bytes {
+                kafka_log_buffer.extend_from_slice(encoded_bytes);
+            } else {
+                let mut combined = Vec::with_capacity(kafka_log_buffer.len() + encoded_bytes.len());
+                combined.extend_from_slice(kafka_log_buffer);
+                combined.extend_from_slice(encoded_bytes);
+                kafka_log_buffer.clear();
 
-            if let Ok(payload) = payload {
-                let mut handle = producer.lock().unwrap();
-                let _ = handle.send(&Record::from_value(topic, payload.as_bytes().to_vec()));
+                let payload = serde_json::to_string(&ReplayLogEntry {
+                    last_command: command.arg.clone(),
+                    output: base64::engine::general_purpose::STANDARD.encode(combined),
+                });
+
+                if let Ok(payload) = payload {
+                    let mut handle = producer.lock().unwrap();
+                    let _ = handle.send(&Record::from_value(topic, payload.as_bytes().to_vec()));
+                }
             }
         }
     }
@@ -202,19 +219,32 @@ fn get_response_from_cache_if_replay_enabled(
         if last_command.is_some() && last_command.unwrap().com_code == ComQuery {
             loop {
                 {
-                    let replay_logs = replay_logs.lock().unwrap();
-                    let entry = replay_logs.get(&connection.get_last_command().unwrap().arg);
+                    let mut replay_logs = replay_logs.lock().unwrap();
+                    let last_command = &connection.get_last_command().unwrap().arg;
+                    let entry = replay_logs.get(last_command);
 
                     if let Some(entry) = entry {
                         if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(entry) {
-                            let len = bytes.len().min(buf.len());
-                            buf[..len].copy_from_slice(&bytes[..len]);
+                            let to_transmit =
+                                connection.partial_replay_bytes.as_ref().unwrap_or(&bytes);
+                            let len = to_transmit.len().min(buf.len());
+                            buf[..len].copy_from_slice(&to_transmit[..len]);
+
+                            if len < to_transmit.len() {
+                                connection.partial_replay_bytes = Some(to_transmit[len..].to_vec());
+                            } else {
+                                connection.partial_replay_bytes = None;
+                            }
+
                             return Some(len);
                         }
                     }
                 }
                 sleep(Duration::from_millis(100));
-                debug!("Timed out waiting for cache population");
+                debug!(
+                    "Timed out waiting for cache population for {}",
+                    connection.get_last_command().unwrap().arg
+                );
             }
         }
     }

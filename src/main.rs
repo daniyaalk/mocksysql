@@ -12,6 +12,7 @@ use kafka::consumer::Consumer;
 use kafka::producer::{Producer, RequiredAcks};
 #[cfg(feature = "replay")]
 use log::debug;
+use log::error;
 use std::env;
 use std::net::TcpListener;
 use std::sync::Arc;
@@ -122,18 +123,25 @@ fn prepare_kafka_producer_config() -> KafkaProducerConfig {
 #[cfg(feature = "replay")]
 fn spawn_kafka_read(mut consumer: Consumer, replay_map: Arc<Mutex<TtlCache<String, String>>>) {
     std::thread::spawn(move || loop {
-        for ms in consumer.poll().unwrap().iter() {
-            for m in ms.messages() {
-                let message_string = String::from_utf8(m.value.to_vec()).unwrap();
+        match consumer.poll() {
+            Ok(poll) => {
+                for ms in poll.iter() {
+                    for m in ms.messages() {
+                        let message_string = String::from_utf8(m.value.to_vec()).unwrap();
 
-                match serde_json::from_str::<ReplayLogEntry>(&*message_string) {
-                    Ok(entry) => {
-                        let mut map = replay_map.lock().unwrap();
-                        debug!("{:?}", entry);
-                        map.insert(entry.last_command, entry.output, get_cache_ttl());
+                        match serde_json::from_str::<ReplayLogEntry>(&*message_string) {
+                            Ok(entry) => {
+                                let mut map = replay_map.lock().unwrap();
+                                debug!("{:?}", entry);
+                                map.insert(entry.last_command, entry.output, get_cache_ttl());
+                            }
+                            Err(e) => println!("Error deserializing replay log entry, {}", e),
+                        }
                     }
-                    Err(e) => println!("Error deserializing replay log entry, {}", e),
                 }
+            }
+            Err(e) => {
+                error!("Error receiving messages, {:?}", e);
             }
         }
     });

@@ -37,6 +37,8 @@ pub struct Connection {
     #[cfg(feature = "replay")]
     pub replay: ReplayLog,
     #[cfg(feature = "replay")]
+    pub partial_replay_bytes: Option<Vec<u8>>,
+    #[cfg(feature = "replay")]
     pub kafka_producer_config: KafkaProducerConfig,
 }
 
@@ -62,6 +64,8 @@ impl Connection {
             replay: replay_map,
             #[cfg(feature = "replay")]
             kafka_producer_config: kafka_config,
+            #[cfg(feature = "replay")]
+            partial_replay_bytes: None,
         }
     }
 
