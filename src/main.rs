@@ -112,7 +112,7 @@ fn prepare_kafka_producer_config() -> KafkaProducerConfig {
             let producer =
                 Producer::from_hosts(kafka_host.split(",").map(|s| s.to_string()).collect())
                     .with_ack_timeout(Duration::from_secs(1))
-                    .with_required_acks(RequiredAcks::One)
+                    .with_required_acks(RequiredAcks::None)
                     .create()
                     .unwrap();
 
