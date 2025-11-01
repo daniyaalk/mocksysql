@@ -9,7 +9,6 @@ use crate::mysql::packet::{
 use crate::mysql::types::{Converter, IntFixedLen, IntLenEnc, StringLenEnc};
 use log::debug;
 use sqlparser::ast::Statement;
-use sqlparser::dialect::MySqlDialect;
 use std::collections::HashMap;
 
 #[derive(Debug, Default, Clone)]
@@ -28,7 +27,6 @@ pub struct ResponseAccumulator {
     params: Vec<ColumnDefinition>,
     accumulation_complete: bool,
     error: Option<ErrorData>,
-    parsed_sql: Option<Vec<Statement>>,
     skipped_packets: usize,
     warning_count: usize,
 }
@@ -50,7 +48,6 @@ impl Accumulator for ResponseAccumulator {
             }
             MySqlCommand::ComStmtReset => next_phase = Phase::Command,
             _ => {
-
                 // Process Result Set
                 if packet.p_type == PacketType::Error {
                     self.state = State::Complete;
@@ -64,7 +61,7 @@ impl Accumulator for ResponseAccumulator {
                 }
 
                 if last_command.com_code == MySqlCommand::ComStmtExecute {
-                    next_phase = self.process_binary_result_set(packet, connection, current_phase);
+                    next_phase = self.process_binary_result_set(packet, current_phase);
                 } else {
                     next_phase = self.process_result_set(packet, connection, current_phase);
                 }
@@ -115,7 +112,12 @@ impl ResponseAccumulator {
         row
     }
 
-    fn override_row(&mut self, packet: &mut Packet, diff: &mut StateDifference) {
+    fn override_row(
+        &mut self,
+        packet: &mut Packet,
+        diff: &mut StateDifference,
+        connection: &Connection,
+    ) {
         let mut row = self.parse_row(packet);
         let mut new_body: Vec<u8> = Vec::new();
         let mut override_state = None;
@@ -134,10 +136,12 @@ impl ResponseAccumulator {
             let column_name = &self.columns.get(i).unwrap().org_name;
             let mut value = row.get(column_name).unwrap();
 
-            if override_state.is_some() && override_state.unwrap().contains_key(column_name) {
-                value = override_state.unwrap().get(column_name).unwrap();
-                // Updating original hashmap to decide if row needs to be omitted in select queries based on new state.
-                row.insert(column_name.clone(), value.clone());
+            if let Some(override_state) = override_state {
+                if let Some(new_value) = override_state.get(column_name) {
+                    value = new_value;
+                    // Updating original hashmap to decide if row needs to be omitted in select queries based on new state.
+                    row.insert(column_name.clone(), value.clone());
+                }
             }
 
             new_body.extend(match value {
@@ -146,7 +150,7 @@ impl ResponseAccumulator {
             })
         }
 
-        if let Some(statements) = &self.parsed_sql {
+        if let Some(statements) = &connection.last_command.as_ref().unwrap().ast {
             if let Some(Statement::Query(query_box)) = statements.last() {
                 let query = query_box.body.as_select();
 
@@ -175,10 +179,12 @@ impl ResponseAccumulator {
     fn process_binary_result_set(
         &self,
         packet: &mut Packet,
-        connection: &Connection,
+        // connection: &Connection,
         current_phase: Phase,
     ) -> Phase {
-        if packet.p_type == PacketType::Eof  || (packet.header.seq == 01 && packet.p_type == PacketType::Ok) {
+        if packet.p_type == PacketType::Eof
+            || (packet.header.seq == 01 && packet.p_type == PacketType::Ok)
+        {
             return Phase::Command;
         }
         current_phase
@@ -246,7 +252,6 @@ impl ResponseAccumulator {
                         self.state = State::Complete;
                         next_phase = self.consume(packet, connection);
                     }
-
                 }
             }
             State::HydrateColumns => {
@@ -291,12 +296,6 @@ impl ResponseAccumulator {
                 } else {
                     self.state = State::Complete;
                 }
-
-                self.parsed_sql = sqlparser::parser::Parser::parse_sql(
-                    &MySqlDialect {},
-                    &connection.get_last_command().unwrap().arg,
-                )
-                .ok();
 
                 next_phase = self.consume(packet, connection)
             }
@@ -358,7 +357,7 @@ impl ResponseAccumulator {
                             .diff
                             .get_mut(&self.columns.first().unwrap().org_table)
                         {
-                            self.override_row(packet, diff);
+                            self.override_row(packet, diff, connection);
                         }
                     }
                     _ => {

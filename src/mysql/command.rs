@@ -1,8 +1,13 @@
+use sqlparser::ast::Statement;
+use sqlparser::dialect::MySqlDialect;
+use sqlparser::parser::Parser;
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Command {
     pub com_code: MySqlCommand,
     pub arg: String,
+    pub ast: Option<Vec<Statement>>,
 }
 
 impl Command {
@@ -13,7 +18,13 @@ impl Command {
             MySqlCommand::ComStmtExecute => "".to_string(),
             _ => String::from_utf8(bytes.to_vec()).expect("Unable to convert bytes to string"),
         };
-        Command { com_code, arg }
+
+        let parsed = Parser::parse_sql(&MySqlDialect {}, &arg);
+        Command {
+            com_code,
+            arg,
+            ast: parsed.ok(),
+        }
     }
 }
 

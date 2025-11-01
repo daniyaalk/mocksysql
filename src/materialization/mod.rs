@@ -1,14 +1,14 @@
 pub mod evaluator;
 
+use crate::util::cache::get_cache_ttl;
 use dashmap::DashMap;
 use log::{debug, error};
 use sqlparser::ast::{Assignment, AssignmentTarget, Expr, Statement, TableFactor};
-use sqlparser::dialect::MySqlDialect;
-use sqlparser::parser::Parser;
 use std::collections::HashMap;
 use std::env;
-use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::sync::Arc;
+#[cfg(feature = "replay")]
+use std::sync::Mutex;
 use ttl_cache::TtlCache;
 use uuid::Uuid;
 
@@ -20,24 +20,21 @@ TODO: Add accommodations for non-equality parameters.
 */
 pub type StateDifference = TtlCache<String, (Option<Expr>, HashMap<String, Option<String>>)>;
 
-static CACHE_TTL: RwLock<Option<u64>> = RwLock::new(None);
-
 /**
 Divergence stored in the following format:
 DashMap<K, V>; where K : Table, V: StateDifference
 */
 pub type StateDiffLog = Arc<DashMap<String, StateDifference>>;
 
-const DIALECT: MySqlDialect = MySqlDialect {};
+#[cfg(feature = "replay")]
+pub type ReplayLog = Option<Arc<Mutex<TtlCache<String, String>>>>;
 
-pub fn get_diff(map: &mut StateDiffLog, query: &str) {
-    let ast = Parser::parse_sql(&DIALECT, query);
-
-    if ast.is_err() {
+pub fn get_diff(map: &mut StateDiffLog, ast: &Option<Vec<Statement>>) {
+    if ast.is_none() {
         return;
     }
 
-    let statement = ast.unwrap();
+    let statement = ast.as_ref().unwrap();
 
     for statement in statement {
         if let Statement::Update {
@@ -51,11 +48,11 @@ pub fn get_diff(map: &mut StateDiffLog, query: &str) {
                 name,
                 alias: _alias,
                 ..
-            } = table.relation
+            } = &table.relation
             {
                 let table_name = name.0.last().unwrap().clone().to_string();
 
-                let processed_assignments = process_assignments(assignments);
+                let processed_assignments = process_assignments(&assignments);
 
                 if processed_assignments.is_err() {
                     panic_on_unsupported_behaviour(processed_assignments.err().unwrap());
@@ -74,7 +71,7 @@ pub fn get_diff(map: &mut StateDiffLog, query: &str) {
 
 fn update_diff_log(
     map: &mut StateDiffLog,
-    selection: Option<Expr>,
+    selection: &Option<Expr>,
     table_name: &String,
     processed_assignments: Result<HashMap<String, Option<String>>, &str>,
 ) {
@@ -84,44 +81,23 @@ fn update_diff_log(
 
     let mut state_difference = map.get_mut(table_name).unwrap();
 
-    let ttl = match *CACHE_TTL.read().unwrap() {
-        Some(ttl_config) => get_duration_from_ttl(ttl_config),
-        None => {
-            let ttl_config = env::var("DIFF_TTL")
-                .unwrap_or("0".to_string())
-                .parse()
-                .unwrap_or(0);
-            get_duration_from_ttl(ttl_config)
-        }
-    };
-
-    CACHE_TTL.write().unwrap().replace(ttl.as_secs());
-
     // YUCKKKKKKK. THIS IS TRASH.
 
     state_difference.insert(
         Uuid::new_v4().to_string(),
-        (selection, processed_assignments.unwrap()),
-        ttl,
+        (selection.clone(), processed_assignments.unwrap()),
+        get_cache_ttl(),
     );
 }
 
-fn get_duration_from_ttl(ttl: u64) -> Duration {
-    if ttl == 0 {
-        Duration::from_secs(10000000)
-    } else {
-        Duration::from_secs(ttl)
-    }
-}
-
 fn process_assignments(
-    assignments: Vec<Assignment>,
+    assignments: &Vec<Assignment>,
 ) -> Result<HashMap<String, Option<String>>, &'static str> {
     let mut processed_assignments = HashMap::default();
 
     for assignment in assignments {
-        if let Expr::Value(value) = assignment.value {
-            let assignment_target = match assignment.target {
+        if let Expr::Value(value) = assignment.value.clone() {
+            let assignment_target = match assignment.target.clone() {
                 AssignmentTarget::Tuple(_) => {
                     panic_on_unsupported_behaviour("Tuple assignment targets are not supported!");
                     return Err("Tuple assignment targets are not supported!");

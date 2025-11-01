@@ -1,10 +1,21 @@
+#[cfg(feature = "replay")]
+use crate::connection::KafkaProducerConfig;
+#[cfg(feature = "replay")]
+use crate::connection::ReplayLogEntry;
 use crate::connection::{Phase, SwitchableConnection};
+#[cfg(feature = "replay")]
+use crate::materialization::ReplayLog;
 use crate::materialization::StateDiffLog;
-use crate::mysql::command::{Command, MySqlCommand};
+use crate::mysql::command::Command;
+use crate::mysql::command::MySqlCommand::ComQuery;
 use crate::mysql::packet::{OkData, Packet, PacketType};
 #[cfg(feature = "tls")]
 use crate::tls::{handle_client_tls, handle_server_tls};
 use crate::{connection::Connection, materialization, state_handler};
+#[cfg(feature = "replay")]
+use base64::Engine;
+#[cfg(feature = "replay")]
+use kafka::producer::Record;
 use log::{debug, error};
 use once_cell::sync::Lazy;
 #[cfg(feature = "tls")]
@@ -14,6 +25,7 @@ use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::atomic::AtomicU8;
 use std::sync::LazyLock;
+use std::thread::sleep;
 use std::time::Duration;
 use std::{
     env,
@@ -43,7 +55,12 @@ static DELAY_VARS: Lazy<HashMap<String, String>> = Lazy::new(|| {
 static CLIENT_TRANSITION_PHASES: LazyLock<HashSet<Phase>> =
     LazyLock::new(|| HashSet::from([Phase::AuthInit, Phase::PendingResponse, Phase::AuthComplete]));
 
-pub fn initiate(client: TcpStream, state_difference_map: StateDiffLog) {
+pub fn initiate(
+    client: TcpStream,
+    state_difference_map: StateDiffLog,
+    #[cfg(feature = "replay")] kafka_config: KafkaProducerConfig,
+    #[cfg(feature = "replay")] replay_map: ReplayLog,
+) {
     let target_address = env::var("TARGET_ADDRESS").unwrap_or_else(|_| "127.0.0.1:3307".to_owned());
 
     let server = TcpStream::connect(target_address).expect("Fault");
@@ -52,6 +69,10 @@ pub fn initiate(client: TcpStream, state_difference_map: StateDiffLog) {
         SwitchableConnection::Plain(RefCell::new(server)),
         SwitchableConnection::Plain(RefCell::new(client)),
         state_difference_map,
+        #[cfg(feature = "replay")]
+        replay_map,
+        #[cfg(feature = "replay")]
+        kafka_config,
     );
 
     let worker = thread::spawn(move || exchange(connection));
@@ -66,22 +87,41 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
 
     loop {
         // Server Loop
+
+        #[cfg(feature = "replay")]
+        let mut kafka_log_buffer: Vec<u8> = Vec::with_capacity(4096);
+
         loop {
             debug!("Listening from server");
 
-            let read_bytes = read_bytes(&mut connection.server_connection, &mut buf)?;
+            #[cfg(feature = "replay")]
+            let mut bytes_count: Option<usize> =
+                get_response_from_cache_if_replay_enabled(&mut connection, &mut buf);
 
-            debug!("From server: {:?}", &buf[0..read_bytes].to_vec());
+            #[cfg(feature = "replay")]
+            if bytes_count.is_none() {
+                bytes_count = Some(read_bytes(&mut connection.server_connection, &mut buf)?);
+            }
 
-            if read_bytes == 0 {
+            #[cfg(not(feature = "replay"))]
+            let bytes_count = Some(read_bytes(&mut connection.server_connection, &mut buf)?);
+
+            let bytes_count = bytes_count.unwrap_or(0);
+
+            debug!("From server: {:?}", &buf[0..bytes_count].to_vec());
+
+            if bytes_count == 0 {
                 return Ok(());
             }
 
-            packets = state_handler::process_incoming_frame(&buf, &mut connection, read_bytes);
+            packets = state_handler::process_incoming_frame(&buf, &mut connection, bytes_count);
 
             let encoded_bytes = state_handler::generate_outgoing_frame(&packets);
 
             write_bytes(&mut connection.client_connection, encoded_bytes.as_slice());
+
+            #[cfg(feature = "replay")]
+            push_to_kafka_if_logging_enabled(&connection, &encoded_bytes, &mut kafka_log_buffer);
 
             if SERVER_TRANSITION_PHASES.contains(&connection.phase) {
                 debug!("Transitioning to client");
@@ -119,6 +159,13 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
                 continue;
             }
 
+            // Don't send data to the server if replay is enabled and the client
+            #[cfg(feature = "replay")]
+            // has performed a query.
+            if send_command_to_server(&connection) {
+                write_bytes(&mut connection.server_connection, encoded_bytes.as_slice());
+            }
+            #[cfg(not(feature = "replay"))]
             write_bytes(&mut connection.server_connection, encoded_bytes.as_slice());
 
             if CLIENT_TRANSITION_PHASES.contains(&connection.phase) {
@@ -129,10 +176,119 @@ fn exchange(mut connection: Connection) -> Result<(), Error> {
     }
 }
 
-fn delay_if_required(last_command: &Option<Command>, delay_vars: &HashMap<String, String>) {
-    let last_command = last_command.clone();
-    if last_command.is_some() {
-        if let Some(command_type) = last_command.unwrap().arg.split_whitespace().next() {
+#[cfg(feature = "replay")]
+fn send_command_to_server(connection: &Connection) -> bool {
+    let last_command = connection.get_last_command();
+    if connection.replay.is_none()
+        || last_command.is_none()
+        || last_command.unwrap().com_code != ComQuery
+    {
+        return true;
+    }
+
+    if let Some(last_command) = last_command {
+        if last_command.com_code != ComQuery {
+            return true;
+        }
+
+        let ast = match &last_command.ast {
+            Some(ast) => ast,
+            None => return false,
+        };
+
+        for statement in ast {
+            if let sqlparser::ast::Statement::Query(query) = statement {
+                if let sqlparser::ast::SetExpr::Select(select) = query.body.as_ref() {
+                    if !select.from.is_empty() {
+                        // If select query, passthrough to server if the query has no table in the 'from' directive.
+                        // This is to facilitate queries that are executed during startup like `select @@version_comment limit 1`
+                        return false;
+                    }
+                } else {
+                    // Don't send the query to the MySQL server if any command other than select is executed.
+                    return false;
+                }
+            }
+        }
+    }
+
+    true
+}
+
+#[cfg(feature = "replay")]
+fn push_to_kafka_if_logging_enabled(
+    connection: &Connection,
+    encoded_bytes: &Vec<u8>,
+    kafka_log_buffer: &mut Vec<u8>,
+) {
+    if let Some(command) = &connection.last_command {
+        if let Some((topic, producer)) = &connection.kafka_producer_config {
+            if let Some(_) = &connection.partial_bytes {
+                kafka_log_buffer.extend_from_slice(encoded_bytes);
+            } else {
+                let mut combined = Vec::with_capacity(kafka_log_buffer.len() + encoded_bytes.len());
+                combined.extend_from_slice(kafka_log_buffer);
+                combined.extend_from_slice(encoded_bytes);
+                kafka_log_buffer.clear();
+
+                let payload = serde_json::to_string(&ReplayLogEntry {
+                    last_command: command.arg.clone(),
+                    output: base64::engine::general_purpose::STANDARD.encode(combined),
+                });
+
+                if let Ok(payload) = payload {
+                    let mut handle = producer.lock().unwrap();
+                    let _ = handle.send(&Record::from_value(topic, payload.as_bytes().to_vec()));
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "replay")]
+fn get_response_from_cache_if_replay_enabled(
+    connection: &mut Connection,
+    buf: &mut [u8],
+) -> Option<usize> {
+    if !send_command_to_server(&connection) {
+        if let Some(replay_logs) = &connection.replay {
+            loop {
+                {
+                    let replay_logs = replay_logs.lock().unwrap();
+                    let last_command = &connection.get_last_command().unwrap().arg;
+                    let entry = replay_logs.get(last_command);
+
+                    if let Some(entry) = entry {
+                        if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(entry) {
+                            let to_transmit =
+                                connection.partial_replay_bytes.as_ref().unwrap_or(&bytes);
+                            let len = to_transmit.len().min(buf.len());
+                            buf[..len].copy_from_slice(&to_transmit[..len]);
+
+                            if len < to_transmit.len() {
+                                connection.partial_replay_bytes = Some(to_transmit[len..].to_vec());
+                            } else {
+                                connection.partial_replay_bytes = None;
+                            }
+
+                            return Some(len);
+                        }
+                    }
+                }
+                sleep(Duration::from_millis(100));
+                debug!(
+                    "Timed out waiting for cache population for {}",
+                    connection.get_last_command().unwrap().arg
+                );
+            }
+        }
+    }
+    None
+}
+
+fn delay_if_required(last_command_option: &Option<Command>, delay_vars: &HashMap<String, String>) {
+    if let Some(last_command) = last_command_option {
+        if let Some(command_type) = last_command.arg.split_whitespace().next() {
             let key = "DELAY_".to_string() + &*command_type.to_uppercase();
             if delay_vars.contains_key(&key) {
                 match env::var(&key) {
@@ -141,7 +297,7 @@ fn delay_if_required(last_command: &Option<Command>, delay_vars: &HashMap<String
 
                         match delay {
                             Ok(delay) => {
-                                thread::sleep(Duration::from_millis(delay));
+                                sleep(Duration::from_millis(delay));
                                 debug!("Delaying for {}", delay);
                             }
                             Err(_) => {
@@ -234,12 +390,12 @@ fn is_write_query(
     let last_command_arg = &last_command.arg.to_lowercase();
 
     let ret = packet.p_type.eq(&PacketType::Command)
-        && last_command.com_code.eq(&MySqlCommand::ComQuery)
+        && last_command.com_code.eq(&ComQuery)
         && (last_command_arg.starts_with("insert")
             || last_command_arg.starts_with("update")
             || last_command_arg.starts_with("delete"));
 
-    materialization::get_diff(diff, &last_command.arg);
+    materialization::get_diff(diff, &last_command.ast);
 
     ret
 }
